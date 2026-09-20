@@ -10,28 +10,10 @@ export interface ProxyPreset {
 
 export const DEFAULT_PROXIES: ProxyPreset[] = [
   {
-    id: 'corsproxy',
-    name: 'پروکسی عمومی CorsProxy.io (پیش‌فرض)',
-    url: 'https://corsproxy.io/?url=',
-    description: 'سرویس سریع و پایدار برای ارسال مستقیم درخواست‌ها به دیجی‌کالا',
-  },
-  {
-    id: 'allorigins',
-    name: 'پروکسی عمومی AllOrigins',
-    url: 'https://api.allorigins.win/raw?url=',
-    description: 'سرویس عمومی و رایگان برای دور زدن محدودیت CORS در مرورگر',
-  },
-  {
-    id: 'codetabs',
-    name: 'پروکسی عمومی CodeTabs',
-    url: 'https://api.codetabs.com/v1/proxy?quest=',
-    description: 'پروکسی عمومی جایگزین با پشتیبانی از JSON',
-  },
-  {
     id: 'direct',
     name: 'اتصال مستقیم (بدون پروکسی)',
     url: '',
-    description: 'اتصال مستقیم بدون واسطه - مناسب محیط‌های محلی یا افزونه‌های CORS',
+    description: 'اتصال مستقیم بدون واسطه - مناسب محیط‌های محلی یا زمان فعال بودن افزونه CORS',
   },
 ];
 
@@ -42,7 +24,8 @@ export function getStoredProxyUrl(): string {
   if (saved !== null) {
     return saved;
   }
-  return DEFAULT_PROXIES[0].url;
+  // Default to empty (user enters their Cloudflare Worker URL)
+  return '';
 }
 
 export function setStoredProxyUrl(url: string): void {
@@ -92,10 +75,18 @@ export async function testProxyConnection(proxyUrl: string): Promise<{ success: 
     const latencyMs = Date.now() - startTime;
 
     if (!res.ok) {
+      let detail = `پاسخ با کد خطای ${res.status} دریافت شد`;
+      if (res.status === 401) {
+        detail = 'خطای ۴۰۱: این پروکسی عمومی نیاز به کلید API پولی دارد. لطفاً از ورکر شخصی کلودفلر (۱۰۰٪ رایگان) استفاده کنید.';
+      } else if (res.status === 403) {
+        detail = 'خطای ۴۰۳: دسترسی از طریق این سرور مسدود شده است.';
+      } else if (res.status >= 500) {
+        detail = `خطای ${res.status}: سرور پروکسی با اختلال یا تایم‌اوت مواجه شد.`;
+      }
       return {
         success: false,
         latencyMs,
-        error: `پاسخ با کد خطای ${res.status} دریافت شد`,
+        error: detail,
       };
     }
 

@@ -29,7 +29,7 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  const [selectedPreset, setSelectedPreset] = useState<string>('allorigins');
+  const [selectedPreset, setSelectedPreset] = useState<string>('custom');
   const [customUrl, setCustomUrl] = useState<string>('');
   const [isTesting, setIsTesting] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{
@@ -43,13 +43,18 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       const stored = getStoredProxyUrl();
-      const matched = DEFAULT_PROXIES.find((p) => p.url === stored);
-      if (matched) {
-        setSelectedPreset(matched.id);
+      if (stored === '') {
+        setSelectedPreset('custom');
         setCustomUrl('');
       } else {
-        setSelectedPreset('custom');
-        setCustomUrl(stored);
+        const matched = DEFAULT_PROXIES.find((p) => p.url === stored);
+        if (matched) {
+          setSelectedPreset(matched.id);
+          setCustomUrl('');
+        } else {
+          setSelectedPreset('custom');
+          setCustomUrl(stored);
+        }
       }
       setTestResult(null);
       setSaveSuccess(false);
@@ -165,9 +170,12 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
         {/* Body */}
         <div className="p-5 overflow-y-auto space-y-5 text-right">
           {/* Status info */}
-          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-300 leading-relaxed space-y-1">
+            <p className="font-bold">
+              ⚡ استعلام زنده و مستقیم با Cloudflare Worker (مشابه چندچندی):
+            </p>
             <p>
-              💡 به علت عدم پشتیبانی دیجی‌کالا از هدرهای CORS در مرورگر، جهت استعلام آنلاین تاریخچه قیمت‌ها نیاز به پروکسی واسطه است. داده‌های کلی پروژه توسط گیت‌هاب اکشنز به صورت کش‌شده و فوق‌العاده سریع از پیش ذخیره شده‌اند.
+              پروکسی‌های عمومی متفرقه (مانند corsproxy.io) به دلیل پولی شدن با خطای ۴۰۱ مواجه می‌شوند. مطمئن‌ترین و سریع‌ترین راه، ورکر شخصی کلودفلر است (۱۰۰٬۰۰۰ استعلام رایگان در روز). اگر برای پروژه چندچندی قبلاً ورکر ساخته‌اید، می‌توانید دقیقاً همان آدرس را وارد کنید.
             </p>
           </div>
 
@@ -177,6 +185,37 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
               انتخاب پروکسی فعال:
             </label>
             <div className="grid grid-cols-1 gap-2">
+              {/* Custom Cloudflare Worker Option (Recommended, First) */}
+              <label
+                onClick={() => setSelectedPreset('custom')}
+                className={`flex items-start gap-3 p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                  selectedPreset === 'custom'
+                    ? 'border-red-500 bg-red-50/50 dark:bg-red-950/20 ring-1 ring-red-500'
+                    : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="proxyPreset"
+                  checked={selectedPreset === 'custom'}
+                  onChange={() => setSelectedPreset('custom')}
+                  className="mt-1 text-red-600 focus:ring-red-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200 block">
+                      ورکر اختصاصی کلودفلر (Cloudflare Worker شخصی)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                      پیشنهادی
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                    سریع‌ترین روش بدون هیچ‌گونه محدودیت یا خطای ۴۰۱ (۱۰۰٬۰۰۰ استعلام رایگان در روز)
+                  </span>
+                </div>
+              </label>
+
               {DEFAULT_PROXIES.map((preset) => (
                 <label
                   key={preset.id}
@@ -204,32 +243,6 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
                   </div>
                 </label>
               ))}
-
-              {/* Custom Proxy Option */}
-              <label
-                onClick={() => setSelectedPreset('custom')}
-                className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
-                  selectedPreset === 'custom'
-                    ? 'border-red-500 bg-red-50/50 dark:bg-red-950/20 ring-1 ring-red-500'
-                    : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="proxyPreset"
-                  checked={selectedPreset === 'custom'}
-                  onChange={() => setSelectedPreset('custom')}
-                  className="mt-1 text-red-600 focus:ring-red-500"
-                />
-                <div className="flex-1">
-                  <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-slate-200 block">
-                    پروکسی اختصاصی من (Cloudflare Worker شخصی)
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                    سریع‌ترین و پایدارترین روش با ۱۰۰٬۰۰۰ استعلام رایگان در روز
-                  </span>
-                </div>
-              </label>
             </div>
           </div>
 
