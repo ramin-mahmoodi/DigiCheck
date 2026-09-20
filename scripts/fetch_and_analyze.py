@@ -22,19 +22,36 @@ def clean_image_url(url: str) -> str:
         return ''
     return url.split('?')[0].strip()
 
-# Rotating headers to prevent 400/429 rate limiting on Digikala price charts
-IRAN_IP_PREFIXES = ['5.200', '2.144', '188.253', '151.232', '91.98', '89.199']
+# Comprehensive pool of Iranian ISP IP subnets (MCI, Irancell, Shatel, Asiatech, Mokhaberat)
+IRAN_IP_PREFIXES = [
+    '5.200', '5.208', '5.218', '2.144', '2.145', '2.146', '2.176', '2.185',
+    '188.253', '188.245', '151.232', '151.233', '91.98', '91.99', '89.199',
+    '85.185', '85.133', '80.191', '78.38', '78.39', '46.224', '46.225',
+    '37.255', '37.254', '31.56', '31.57', '178.131', '164.138'
+]
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+]
 
 def get_chart_headers():
     prefix = random.choice(IRAN_IP_PREFIXES)
     fake_ip = f"{prefix}.{random.randint(1, 254)}.{random.randint(1, 254)}"
     return {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": random.choice(USER_AGENTS),
         "Referer": "https://www.digikala.com/",
         "Origin": "https://www.digikala.com",
         "X-Forwarded-For": fake_ip,
         "Client-IP": fake_ip,
+        "X-Real-IP": fake_ip,
+        "X-Client-IP": fake_ip,
+        "CF-Connecting-IP": fake_ip,
         "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "fa,en;q=0.9",
     }
 
 # Web headers (accepted by api.digikala.com with 200 OK)
@@ -322,25 +339,33 @@ def format_product_item(p: dict, offer_key: str, offer_title: str, main_cat_id=N
 
 def fetch_single_chart(pid: int):
     url = PRICE_CHART_URL_TEMPLATE.format(product_id=pid)
-    for attempt in range(3):
+    for attempt in range(4):
         try:
+            # Gentle pacing to avoid WAF/rate-limit burst detection
+            time.sleep(random.uniform(0.08, 0.22))
             headers = get_chart_headers()
-            r = requests.get(url, headers=headers, timeout=6)
+            r = requests.get(url, headers=headers, timeout=8)
             if r.status_code == 200:
                 data = r.json()
                 pc = data.get('data', {}).get('price_chart', [])
                 history = []
                 if isinstance(pc, list):
                     for item in pc:
-                        if isinstance(item, dict) and item.get('history'):
+                        if isinstance(item, dict) and item.get('history') and len(item['history']) > 0:
                             history = item['history']
                             break
-                return pid, history
+                return pid, history, 'ok'
             elif r.status_code in (400, 429):
-                time.sleep(0.2 * (attempt + 1))
+                # Back off with exponential wait so rate-limit window cools down
+                wait_time = (attempt + 1) * 1.2 + random.uniform(0.2, 0.5)
+                time.sleep(wait_time)
+            else:
+                time.sleep(0.5)
+        except requests.exceptions.Timeout:
+            time.sleep(0.6 * (attempt + 1))
         except Exception:
-            time.sleep(0.1)
-    return pid, []
+            time.sleep(0.3)
+    return pid, [], 'exhausted'
 
 def main():
     print("🚀 Starting Complete Digikala Offers Collector & Analyzer...", flush=True)
@@ -512,21 +537,20 @@ def main():
         }
         print(f"📊 Tab '{meta['title']}': {len(prods)} products", flush=True)
 
-    # 5. Concurrently fetch 30-day Price Charts
-    print(f"📈 4. Fetching 30-day price charts for {len(product_dict)} products...", flush=True)
+    # 5. Concurrently fetch 30-day Price Charts with reduced concurrency (3 workers) & polite pacing
+    print(f"📈 4. Fetching 30-day price charts for {len(product_dict)} products (Paced at 3 workers with 4-attempt backoff)...", flush=True)
     all_pids = list(product_dict.keys())
     chart_success_count = 0
+    no_chart_on_digikala = 0
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         future_to_pid = {executor.submit(fetch_single_chart, pid): pid for pid in all_pids}
         done_count = 0
         for future in as_completed(future_to_pid):
             done_count += 1
             pid = future_to_pid[future]
-            if done_count % 100 == 0 or done_count == len(all_pids):
-                print(f"  -> Progress: {done_count}/{len(all_pids)} charts processed ({chart_success_count} charts saved)", flush=True)
             try:
-                ret_pid, history = future.result()
+                ret_pid, history, status = future.result()
                 if history and len(history) > 0:
                     chart_success_count += 1
                     prod = product_dict.get(ret_pid)
@@ -551,10 +575,16 @@ def main():
                         chart_file = os.path.join(CHARTS_DIR, f"{ret_pid}.json")
                         with open(chart_file, 'w', encoding='utf-8') as cf:
                             json.dump(chart_data, cf, ensure_ascii=False)
+                elif status == 'ok':
+                    # 200 OK from Digikala, but product simply has no historical price chart
+                    no_chart_on_digikala += 1
             except Exception:
                 pass
 
-    print(f"✅ Price charts successfully saved: {chart_success_count}/{len(all_pids)}", flush=True)
+            if done_count % 50 == 0 or done_count == len(all_pids):
+                print(f"  -> Progress: {done_count}/{len(all_pids)} charts processed ({chart_success_count} charts saved, {no_chart_on_digikala} no history in Digikala)", flush=True)
+
+    print(f"✅ Price charts successfully saved: {chart_success_count}/{len(all_pids)} ({no_chart_on_digikala} without history on Digikala)", flush=True)
 
     # 6. Compute Statistics
     stats = {
