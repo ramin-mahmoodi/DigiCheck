@@ -25,7 +25,7 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
   onSelectTab,
   totalUniqueCount,
 }) => {
-  const categoryList = Object.values(categories);
+  const categoryList = Object.values(categories).filter((c) => c.key !== 'all_offers_list');
   const {
     scrollRef,
     isDragging,

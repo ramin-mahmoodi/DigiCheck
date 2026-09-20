@@ -105,9 +105,13 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
       'Access-Control-Allow-Headers': '*',
     };
     if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-    const url = new URL(request.url);
-    const targetUrl = url.searchParams.get('url');
-    if (!targetUrl) return new Response('Missing ?url=', { status: 400, headers: corsHeaders });
+
+    const searchStr = new URL(request.url).search;
+    const urlIdx = searchStr.indexOf('url=');
+    if (urlIdx === -1) return new Response('Missing ?url=', { status: 400, headers: corsHeaders });
+
+    let targetUrl = searchStr.slice(urlIdx + 4);
+    try { targetUrl = decodeURIComponent(targetUrl); } catch(e) {}
 
     try {
       const pidMatch = targetUrl.match(/\\/product\\/(\\d+)\\//);
@@ -133,22 +137,19 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
         }
       };
 
-      if (targetUrl.includes('price-chart') || targetUrl.includes('/product/')) {
-        try {
-          const warmRes = await fetch(referer, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36' } });
-          parseCookies(warmRes);
-        } catch (e) {}
-      }
-
       let currentUrl = targetUrl;
       let response;
       let hops = 0;
 
       while (hops < 6) {
         const headers = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://www.digikala.com',
           'Referer': referer,
+          'Sec-Fetch-Site': 'same-site',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Dest': 'empty',
           'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
         };
 
@@ -164,15 +165,6 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
           currentUrl = loc ? new URL(loc, currentUrl).href : currentUrl;
           hops++;
           continue;
-        }
-
-        if ((response.status === 400 || response.status === 429) && hops === 0 && cookieMap.size === 0) {
-          try {
-            const warmRes = await fetch(referer, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36' } });
-            parseCookies(warmRes);
-            hops++;
-            continue;
-          } catch (e) {}
         }
 
         break;

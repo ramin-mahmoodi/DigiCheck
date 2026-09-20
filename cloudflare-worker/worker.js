@@ -1,8 +1,6 @@
 /**
  * Cloudflare Worker CORS Proxy for Digikala API
- * 
- * Supports manual redirect following with cookie preservation (bypasses F5/WAF cookie challenge)
- * Supports pre-warming session for protected endpoints like price-chart
+ * Handles query preservation, correct browser headers, and redirect/cookie management
  */
 
 export default {
@@ -17,15 +15,21 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    const url = new URL(request.url);
-    const targetUrl = url.searchParams.get('url');
-
-    if (!targetUrl) {
+    // Safely extract the target URL even if it contains its own ?query=parameters
+    const urlObj = new URL(request.url);
+    const searchStr = urlObj.search;
+    const urlParamIndex = searchStr.indexOf('url=');
+    if (urlParamIndex === -1) {
       return new Response(JSON.stringify({ error: 'Missing ?url= parameter' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    let targetUrl = searchStr.slice(urlParamIndex + 4);
+    try {
+      targetUrl = decodeURIComponent(targetUrl);
+    } catch (e) {}
 
     try {
       const pidMatch = targetUrl.match(/\/product\/(\d+)\//);
@@ -58,29 +62,19 @@ export default {
         }
       };
 
-      // Pre-warm security cookies on referer for price-chart / product endpoints
-      if (targetUrl.includes('price-chart') || targetUrl.includes('/product/')) {
-        try {
-          const warmRes = await fetch(referer, {
-            method: 'HEAD',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
-              'Accept': '*/*',
-            }
-          });
-          parseCookies(warmRes);
-        } catch (e) {}
-      }
-
       let currentUrl = targetUrl;
       let response;
       let hops = 0;
 
       while (hops < 6) {
         const headers = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
           'Accept': 'application/json, text/plain, */*',
+          'Origin': 'https://www.digikala.com',
           'Referer': referer,
+          'Sec-Fetch-Site': 'same-site',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Dest': 'empty',
           'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
         };
 
@@ -96,27 +90,12 @@ export default {
 
         parseCookies(response);
 
-        // Handle redirect or F5 cookie challenge
+        // Handle redirect or F5 cookie challenge (301, 302, 307, etc.)
         if ([301, 302, 303, 307, 308].includes(response.status)) {
           const loc = response.headers.get('Location');
           currentUrl = loc ? new URL(loc, currentUrl).href : currentUrl;
           hops++;
           continue;
-        }
-
-        // If rate limit / anti-bot 400 or 429 occurs on first attempt without cookies, warm up and retry once
-        if ((response.status === 400 || response.status === 429) && hops === 0 && cookieMap.size === 0) {
-          try {
-            const warmRes = await fetch(referer, {
-              method: 'HEAD',
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
-              }
-            });
-            parseCookies(warmRes);
-            hops++;
-            continue;
-          } catch (e) {}
         }
 
         break;

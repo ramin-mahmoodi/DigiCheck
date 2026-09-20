@@ -1,4 +1,4 @@
-import { OffersDataResponse, ProductChartData, PriceChartHistoryPoint, ProductItem } from '../types';
+import { OffersDataResponse, ProductChartData, PriceChartHistoryPoint, ProductItem, DiscountAnalysis, DiscountVerdict } from '../types';
 import { analyzeDiscountClient } from './dealAnalyzer';
 
 export interface ProxyPreset {
@@ -248,28 +248,133 @@ export async function fetchLiveProductChart(
   return result.data;
 }
 
-/**
- * Live fetch for the entire Incredible Offers dataset directly from Digikala API
- */
-export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResponse> {
-  const targetUrl = 'https://api.digikala.com/v1/incredible-offers/';
-  const activeProxy = proxyUrl !== undefined ? proxyUrl : getStoredProxyUrl();
-  const fetchUrl = buildProxyUrl(targetUrl, activeProxy);
+export function computeLiveDealVerdict(p: any): DiscountAnalysis {
+  const priceInfo = p.default_variant?.price || {};
+  const sellingPrice = priceInfo.selling_price || 0;
+  const rrpPrice = priceInfo.rrp_price || sellingPrice;
+  const discountPercent = priceInfo.discount_percent || 0;
+  const minPriceLastMonth = p.properties?.min_price_in_last_month || 0;
+  const hasBestPriceInLastMonth = p.default_variant?.has_best_price_in_last_month || false;
 
-  const res = await fetch(fetchUrl, {
-    headers: {
-      'Accept': 'application/json',
-    },
-  });
+  let verdict: DiscountVerdict = 'NEUTRAL';
+  let verdictLabel = 'تخفیف جزئی';
+  let verdictColor: DiscountAnalysis['verdict_color'] = 'blue';
+  let score = 55;
+  let reason = 'تخفیف عادی در جشنواره شگفت‌انگیز دیجی‌کالا.';
 
-  if (!res.ok) {
-    throw new Error(`خطا در دریافت زنده شگفت‌انگیزها (${res.status})`);
+  const min30d = minPriceLastMonth > 0 ? minPriceLastMonth : sellingPrice;
+
+  if (hasBestPriceInLastMonth || (minPriceLastMonth > 0 && sellingPrice <= minPriceLastMonth)) {
+    verdict = 'REAL_GREAT';
+    verdictLabel = 'تخفیف واقعی (کف قیمت ماه)';
+    verdictColor = 'green';
+    score = 92;
+    reason = 'قیمت فعلی کالا در کمترین رقم ثبت‌شده ۳۰ روز گذشته قرار دارد.';
+  } else if (minPriceLastMonth > 0 && sellingPrice > minPriceLastMonth * 1.05) {
+    verdict = 'FAKE_UNCHANGED';
+    verdictLabel = 'تخفیف صوری (گران‌تر از کف ماه)';
+    verdictColor = 'orange';
+    score = 35;
+    const diff = Math.round(((sellingPrice - minPriceLastMonth) / minPriceLastMonth) * 100);
+    reason = `این کالا در ۳۰ روز گذشته با قیمت پایین‌تری (${Math.round(minPriceLastMonth / 10).toLocaleString('fa-IR')} تومان) عرضه شده بود (${diff.toLocaleString('fa-IR')}٪ گران‌تر از کف).`;
+  } else if (discountPercent >= 30) {
+    verdict = 'REAL_MODERATE';
+    verdictLabel = 'تخفیف منصفانه';
+    verdictColor = 'emerald';
+    score = 75;
+    reason = `تخفیف مناسب ${discountPercent.toLocaleString('fa-IR')} درصدی نسبت به قیمت پایه محصول.`;
+  } else if (discountPercent > 0) {
+    verdict = 'NEUTRAL';
+    verdictLabel = 'تخفیف جزئی';
+    verdictColor = 'blue';
+    score = 55;
+    reason = `تخفیف متداول ${discountPercent.toLocaleString('fa-IR')} درصدی دیجی‌کالا.`;
   }
 
-  const json = await res.json();
-  const rawData = json?.data || {};
+  return {
+    verdict,
+    verdict_label: verdictLabel,
+    verdict_color: verdictColor,
+    score,
+    reason,
+    min_30d: min30d,
+    max_30d: rrpPrice,
+    avg_30d: Math.round((sellingPrice + rrpPrice) / 2),
+    price_diff_30d_min: sellingPrice - min30d,
+    price_diff_percent: discountPercent,
+    is_all_time_low: hasBestPriceInLastMonth,
+    rrp_inflated: false,
+  };
+}
+
+function mapRawToProductItem(p: any, offerKey: string, offerTitle: string): ProductItem {
+  const pid = p.id;
+  const priceInfo = p.default_variant?.price || {};
+  const selling = priceInfo.selling_price || 0;
+  const rrp = priceInfo.rrp_price || selling;
+  const discount = priceInfo.discount_percent || 0;
+
+  const images = p.images || {};
+  const mainImg = Array.isArray(images.main?.url) && images.main.url.length > 0
+    ? images.main.url[0]
+    : (typeof images.main?.url === 'string' ? images.main.url : '');
+
+  const catTitle = p.data_layer?.item_category2 || p.category?.title || 'سایر';
+  const catId = p.category?.id || null;
+  const uri = p.url?.uri || `/product/dkp-${pid}/`;
+
+  const analysis = computeLiveDealVerdict(p);
+
+  return {
+    id: pid,
+    title_fa: p.title_fa || '',
+    title_en: p.title_en || '',
+    image: mainImg,
+    selling_price: selling,
+    rrp_price: rrp,
+    discount_percent: discount,
+    rating: p.rating?.rate || 0,
+    rating_count: p.rating?.count || 0,
+    category_id: catId,
+    category_title: catTitle,
+    url: `https://www.digikala.com${uri}`,
+    offer_type: offerKey,
+    offer_type_title: offerTitle,
+    has_chart: false,
+    analysis,
+  };
+}
+
+/**
+ * Live fetch for the entire Incredible Offers dataset directly from Digikala API.
+ * Combines the featured landing page sections with live paginated products to load 150+ products.
+ */
+export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResponse> {
+  const activeProxy = proxyUrl !== undefined ? proxyUrl : getStoredProxyUrl();
+  const landingUrl = buildProxyUrl('https://api.digikala.com/v1/incredible-offers/', activeProxy);
+
+  // Fetch landing page and multiple pages of all incredible offers in parallel
+  const fetchJson = async (target: string) => {
+    const u = buildProxyUrl(target, activeProxy);
+    const r = await fetch(u, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error(`خطا در اتصال به دیجی‌کالا (${r.status})`);
+    return await r.json();
+  };
+
+  // Fetch landing + pages 1, 2, 3, 4, 5
+  const [landingJson, p1Json, p2Json, p3Json, p4Json, p5Json] = await Promise.all([
+    fetchJson('https://api.digikala.com/v1/incredible-offers/'),
+    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=1').catch(() => null),
+    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=2').catch(() => null),
+    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=3').catch(() => null),
+    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=4').catch(() => null),
+    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=5').catch(() => null),
+  ]);
+
+  const rawData = landingJson?.data || {};
 
   const OFFER_KEYS: Record<string, { title: string; badge: string; icon: string }> = {
+    'all_offers_list': { title: 'همه شگفت‌انگیزها', badge: 'کاتالوگ زنده', icon: 'Layers' },
     'incredible_products_list': { title: 'شگفت‌انگیز روز', badge: 'عمومی', icon: 'Sparkles' },
     'lightening_deal_products': { title: 'پیشنهاد صاعقه‌ای', badge: 'تخفیف ویژه', icon: 'Zap' },
     'running_out_incredible_products': { title: 'فرصت پایانی', badge: 'در حال اتمام', icon: 'Flame' },
@@ -278,7 +383,7 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
   };
 
   const offerCategories: Record<string, any> = {};
-  let totalCount = 0;
+  const seenProductIds = new Set<number>();
   const stats = {
     real_deals_count: 0,
     fake_deals_count: 0,
@@ -287,48 +392,45 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
     max_discount: 0,
   };
 
+  // Collect paginated products into all_offers_list
+  const paginatedRawProducts: any[] = [];
+  for (const pRes of [p1Json, p2Json, p3Json, p4Json, p5Json]) {
+    if (Array.isArray(pRes?.data?.products)) {
+      paginatedRawProducts.push(...pRes.data.products);
+    }
+  }
+
+  // Populate landing page categories
   for (const [key, meta] of Object.entries(OFFER_KEYS)) {
-    const catData = rawData[key] || {};
-    const rawProducts = Array.isArray(catData.products) ? catData.products : [];
+    let rawList: any[] = [];
+    if (key === 'all_offers_list') {
+      rawList = paginatedRawProducts;
+    } else {
+      const catData = rawData[key] || {};
+      rawList = Array.isArray(catData.products) ? catData.products : [];
+    }
 
-    const products: ProductItem[] = rawProducts.map((p: any) => {
-      const pid = p.id;
-      const priceInfo = p.default_variant?.price || {};
-      const selling = priceInfo.selling_price || 0;
-      const rrp = priceInfo.rrp_price || selling;
-      const discount = priceInfo.discount_percent || 0;
-      if (discount > stats.max_discount) stats.max_discount = discount;
-
-      const images = p.images || {};
-      const mainImg = Array.isArray(images.main?.url) && images.main.url.length > 0
-        ? images.main.url[0]
-        : (typeof images.main?.url === 'string' ? images.main.url : '');
-
-      const catTitle = p.data_layer?.item_category2 || p.category?.title || 'سایر';
-      const catId = p.category?.id || null;
-      const uri = p.url?.uri || `/product/dkp-${pid}/`;
-
-      return {
-        id: pid,
-        title_fa: p.title_fa || '',
-        title_en: p.title_en || '',
-        image: mainImg,
-        selling_price: selling,
-        rrp_price: rrp,
-        discount_percent: discount,
-        rating: p.rating?.rate || 0,
-        rating_count: p.rating?.count || 0,
-        category_id: catId,
-        category_title: catTitle,
-        url: `https://www.digikala.com${uri}`,
-        offer_type: key,
-        offer_type_title: meta.title,
-        has_chart: false,
-        analysis: null,
-      };
+    const products: ProductItem[] = rawList.map((p: any) => {
+      const item = mapRawToProductItem(p, key, meta.title);
+      if (!seenProductIds.has(item.id)) {
+        seenProductIds.add(item.id);
+        if (item.discount_percent > stats.max_discount) {
+          stats.max_discount = item.discount_percent;
+        }
+        if (item.analysis?.verdict === 'REAL_GREAT') {
+          stats.real_deals_count++;
+          stats.great_deals_count++;
+        } else if (item.analysis?.verdict === 'REAL_MODERATE') {
+          stats.real_deals_count++;
+        } else if (item.analysis?.verdict === 'FAKE_UNCHANGED' || item.analysis?.verdict === 'FAKE_INFLATED') {
+          stats.fake_deals_count++;
+        } else {
+          stats.neutral_deals_count++;
+        }
+      }
+      return item;
     });
 
-    totalCount += products.length;
     offerCategories[key] = {
       key,
       title: meta.title,
@@ -346,7 +448,7 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
   return {
     last_updated: now.toISOString(),
     last_updated_fa: `${timePart} (${datePart}) - زنده`,
-    total_products: totalCount,
+    total_products: seenProductIds.size,
     stats,
     main_categories: rawData.main_categories || [],
     offer_categories: offerCategories,
