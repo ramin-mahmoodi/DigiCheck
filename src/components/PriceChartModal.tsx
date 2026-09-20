@@ -23,7 +23,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { ProductItem, ProductChartData, PriceChartHistoryPoint } from '../types';
-import { fetchCachedProductChart, fetchProductChartWithFallback, getStoredProxyUrl } from '../services/api';
+import { fetchProductChartWithFallback, getStoredProxyUrl } from '../services/api';
 
 interface PriceChartModalProps {
   product: ProductItem | null;
@@ -38,45 +38,23 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
   const [isLiveSource, setIsLiveSource] = useState(false);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
-  const loadChart = async (isLiveRetry: boolean = false) => {
+  const loadChart = async () => {
     if (!product) return;
-
-    if (isLiveRetry) {
-      setIsLiveFetching(true);
-    } else {
-      setLoading(true);
-    }
+    setLoading(true);
     setError(null);
+    setIsLiveFetching(true);
 
-    // 1. Immediately load bundled/cached chart - instant 0s response, zero errors!
-    const cached = await fetchCachedProductChart(product.id);
-    if (cached) {
-      setChartData(cached);
-      setIsLiveSource(false);
-      setLoading(false);
-    }
-
-    // 2. Only attempt live proxy fetch if a proxy is configured or user manually clicked retry
-    const proxyUrl = getStoredProxyUrl();
-    if (proxyUrl || isLiveRetry) {
-      try {
-        const result = await fetchProductChartWithFallback(product.id, proxyUrl, true);
-        setChartData(result.data);
-        setIsLiveSource(result.source === 'live');
-        setLatencyMs(result.latencyMs || null);
-        setError(null);
-      } catch (err: any) {
-        if (!cached) {
-          setError(err.message || 'خطا در استعلام چارت کالا');
-        }
-      } finally {
-        setIsLiveFetching(false);
-        setLoading(false);
-      }
-    } else {
-      if (!cached) {
-        setError('چارت تاریخی برای این کالا هنوز ثبت نشده است.');
-      }
+    try {
+      const proxyUrl = getStoredProxyUrl();
+      const result = await fetchProductChartWithFallback(product.id, proxyUrl);
+      setChartData(result.data);
+      setIsLiveSource(true);
+      setLatencyMs(result.latencyMs || null);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'خطا در دریافت زنده نمودار قیمت کالا از دیجی‌کالا');
+    } finally {
+      setIsLiveFetching(false);
       setLoading(false);
     }
   };
@@ -89,7 +67,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
       setLatencyMs(null);
       return;
     }
-    loadChart(false);
+    loadChart();
   }, [product]);
 
   if (!product) return null;
@@ -150,7 +128,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => loadChart(true)}
+              onClick={() => loadChart()}
               disabled={isLiveFetching || loading}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-50"
               title="استعلام مجدد زنده با پروکسی"
@@ -366,7 +344,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                   برخی کالاها تاریخچه قیمت روزانه ندارند، یا ارتباط با سرور پروکسی برقرار نشد. می‌توانید با دکمه زیر مجدداً به صورت زنده استعلام بگیرید یا پروکسی خود را در تنظیمات بررسی کنید.
                 </p>
                 <button
-                  onClick={() => loadChart(true)}
+                  onClick={() => loadChart()}
                   disabled={isLiveFetching}
                   className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/20 disabled:opacity-50"
                 >
