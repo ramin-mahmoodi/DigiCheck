@@ -84,4 +84,6 @@ export interface ProductChartData {
   rrp_price: number;
   analysis: DiscountAnalysis;
   history: PriceChartHistoryPoint[];
+  is_live?: boolean;
+  latency_ms?: number;
 }

@@ -23,7 +23,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { ProductItem, ProductChartData, PriceChartHistoryPoint } from '../types';
-import { fetchCachedProductChart, fetchLiveProductChart } from '../services/api';
+import { fetchCachedProductChart, fetchProductChartWithFallback } from '../services/api';
 
 interface PriceChartModalProps {
   product: ProductItem | null;
@@ -35,8 +35,10 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLiveFetching, setIsLiveFetching] = useState(false);
+  const [isLiveSource, setIsLiveSource] = useState(false);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
-  const loadChart = async (isLiveRetry: boolean = false) => {
+  const loadChart = async (isLiveRetry: boolean = true) => {
     if (!product) return;
 
     if (isLiveRetry) {
@@ -46,23 +48,26 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
     }
     setError(null);
 
+    // If cached chart exists, load it immediately so UI doesn't look empty while live fetch is in-flight
+    fetchCachedProductChart(product.id)
+      .then((cached) => {
+        if (cached && !chartData) {
+          setChartData(cached);
+          setIsLiveSource(false);
+        }
+      })
+      .catch(() => {});
+
     try {
-      // 1. First try cached data
-      let data = await fetchCachedProductChart(product.id);
-
-      // 2. If not cached and is live retry, attempt live fetch
-      if (!data && isLiveRetry) {
-        data = await fetchLiveProductChart(product.id);
-      }
-
-      if (data && data.history && data.history.length > 0) {
-        setChartData(data);
-        setError(null);
-      } else {
-        setError('چارت تاریخی این کالا هنوز در کش ذخیره نشده است.');
-      }
+      const result = await fetchProductChartWithFallback(product.id, undefined, isLiveRetry);
+      setChartData(result.data);
+      setIsLiveSource(result.source === 'live');
+      setLatencyMs(result.latencyMs || null);
+      setError(null);
     } catch (err: any) {
-      setError(err.message || 'خطا در بارگذاری چارت');
+      if (!chartData) {
+        setError(err.message || 'خطا در استعلام چارت کالا');
+      }
     } finally {
       setLoading(false);
       setIsLiveFetching(false);
@@ -73,9 +78,11 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
     if (!product) {
       setChartData(null);
       setError(null);
+      setIsLiveSource(false);
+      setLatencyMs(null);
       return;
     }
-    loadChart(false);
+    loadChart(true);
   }, [product]);
 
   if (!product) return null;
@@ -106,13 +113,25 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
               <ChartIcon className="w-6 h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider">
                   کد کالا: {product.id}
                 </span>
                 {analysis?.verdict && (
                   <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                     امتیاز صداقت: {analysis.score} از ۱۰۰
+                  </span>
+                )}
+                {isLiveSource ? (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>زنده از دیجی‌کالا (پروکسی)</span>
+                    {latencyMs ? <span className="text-[10px] font-mono opacity-80">({latencyMs}ms)</span> : null}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
+                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span>داده ذخیره‌شده (کش)</span>
                   </span>
                 )}
               </div>
@@ -122,12 +141,23 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => loadChart(true)}
+              disabled={isLiveFetching || loading}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-50"
+              title="استعلام مجدد زنده با پروکسی"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLiveFetching ? 'animate-spin text-red-500' : ''}`} />
+              <span className="hidden sm:inline">{isLiveFetching ? 'در حال دریافت...' : 'استعلام زنده'}</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}
@@ -323,10 +353,10 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
               <div className="h-64 flex flex-col items-center justify-center p-6 text-center space-y-3">
                 <ShieldAlert className="w-10 h-10 text-amber-500" />
                 <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                  تاریخچه این کالا در کش موجود نیست
+                  اطلاعات چارت برای این کالا یافت نشد
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
-                  برخی کالاها (به‌ویژه کالاهای تازه اضافه شده یا سوپرمارکتی) چارت روزانه قبلی ندارند، یا در چرخه فعلی استعلام محدود شده‌اند.
+                  برخی کالاها تاریخچه قیمت روزانه ندارند، یا ارتباط با سرور پروکسی برقرار نشد. می‌توانید با دکمه زیر مجدداً به صورت زنده استعلام بگیرید یا پروکسی خود را در تنظیمات بررسی کنید.
                 </p>
                 <button
                   onClick={() => loadChart(true)}
@@ -334,7 +364,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                   className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/20 disabled:opacity-50"
                 >
                   <RefreshCw className={`w-4 h-4 ${isLiveFetching ? 'animate-spin' : ''}`} />
-                  <span>{isLiveFetching ? 'در حال استعلام از دیجی‌کالا...' : 'استعلام زنده چارت این کالا'}</span>
+                  <span>{isLiveFetching ? 'در حال استعلام از دیجی‌کالا...' : 'استعلام مجدد زنده با پروکسی'}</span>
                 </button>
                 {error && (
                   <span className="text-[11px] text-rose-500 font-medium">

@@ -19,7 +19,7 @@ import { ProductCard } from './components/ProductCard';
 import { PriceChartModal } from './components/PriceChartModal';
 import { ManualChecker } from './components/ManualChecker';
 import { ProxySettingsModal } from './components/ProxySettingsModal';
-import { fetchOffersData } from './services/api';
+import { fetchOffersData, fetchLiveOffers } from './services/api';
 import { OffersDataResponse, ProductItem } from './types';
 
 export const App: React.FC = () => {
@@ -78,9 +78,25 @@ export const App: React.FC = () => {
     loadData();
   }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    loadData();
+    setError(null);
+    try {
+      // 1. First attempt live fetch of current incredible offers via proxy
+      const liveOffers = await fetchLiveOffers();
+      setData(liveOffers);
+    } catch (err: any) {
+      console.warn('[DigiCheck] Live offers fetch failed, falling back to static offers cache:', err);
+      // 2. Fallback to static offers data
+      try {
+        const response = await fetchOffersData();
+        setData(response);
+      } catch (fallbackErr: any) {
+        setError(fallbackErr.message || 'خطا در دریافت اطلاعات شگفت‌انگیز دیجی‌کالا');
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   // Products for currently active offer tab (or all unique products if ALL_OFFERS)
