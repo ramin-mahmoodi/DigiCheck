@@ -18,6 +18,7 @@ import { MainCategoryBar } from './components/MainCategoryBar';
 import { ProductCard } from './components/ProductCard';
 import { PriceChartModal } from './components/PriceChartModal';
 import { ManualChecker } from './components/ManualChecker';
+import { ProxySettingsModal } from './components/ProxySettingsModal';
 import { fetchOffersData } from './services/api';
 import { OffersDataResponse, ProductItem } from './types';
 
@@ -56,6 +57,7 @@ export const App: React.FC = () => {
   // Modal States
   const [selectedProductForChart, setSelectedProductForChart] = useState<ProductItem | null>(null);
   const [isManualCheckerOpen, setIsManualCheckerOpen] = useState(false);
+  const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
 
   // Fetch initial data
   const loadData = async () => {
@@ -189,6 +191,7 @@ export const App: React.FC = () => {
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onOpenManualChecker={() => setIsManualCheckerOpen(true)}
+        onOpenProxySettings={() => setIsProxyModalOpen(true)}
         lastUpdatedFa={data?.last_updated_fa || ''}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
@@ -360,6 +363,11 @@ export const App: React.FC = () => {
         isOpen={isManualCheckerOpen}
         onClose={() => setIsManualCheckerOpen(false)}
         onOpenChartWithData={(prod) => setSelectedProductForChart(prod)}
+      />
+
+      <ProxySettingsModal
+        isOpen={isProxyModalOpen}
+        onClose={() => setIsProxyModalOpen(false)}
       />
     </div>
   );
