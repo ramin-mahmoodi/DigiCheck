@@ -110,46 +110,25 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
     if (!targetUrl) return new Response('Missing ?url=', { status: 400, headers: corsHeaders });
 
     try {
-      let currentUrl = targetUrl;
-      const cookieMap = new Map();
-      let response;
-      let hops = 0;
+      const pidMatch = targetUrl.match(/\\/product\\/(\\d+)\\//);
+      const referer = pidMatch ? \`https://www.digikala.com/product/dkp-\${pidMatch[1]}/\` : 'https://www.digikala.com/';
 
-      while (hops < 5) {
-        const headers = new Headers();
-        headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36');
-        headers.set('Accept', 'application/json, text/plain, */*');
-        const pidMatch = currentUrl.match(/\/product\/(\d+)\//);
-        const referer = pidMatch ? \`https://www.digikala.com/product/dkp-\${pidMatch[1]}/\` : 'https://www.digikala.com/';
-        headers.set('Referer', referer);
-        headers.set('Accept-Language', 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7');
-        if (cookieMap.size > 0) {
-          headers.set('Cookie', Array.from(cookieMap.entries()).map(([k, v]) => \`\${k}=\${v}\`).join('; '));
-        }
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Referer': referer,
+        'Accept-Language': 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
+      };
 
-        response = await fetch(currentUrl, { method: 'GET', headers, redirect: 'manual' });
-
-        const setCookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [response.headers.get('set-cookie')].filter(Boolean);
-        for (const raw of setCookies) {
-          const [key, ...rest] = raw.split(';')[0].split('=');
-          if (key && rest.length) cookieMap.set(key.trim(), rest.join('=').trim());
-        }
-
-        if ([301, 302, 303, 307, 308].includes(response.status)) {
-          const loc = response.headers.get('Location');
-          if (loc) {
-            currentUrl = new URL(loc, currentUrl).href;
-            hops++;
-            continue;
-          }
-        }
-        break;
-      }
-
+      const response = await fetch(targetUrl, { method: 'GET', headers, redirect: 'follow' });
       const body = await response.text();
       return new Response(body, {
         status: response.status,
-        headers: { ...corsHeaders, 'Content-Type': response.headers.get('Content-Type') || 'application/json; charset=utf-8' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': response.headers.get('Content-Type') || 'application/json; charset=utf-8',
+          'Cache-Control': response.ok ? 'public, max-age=30' : 'no-cache, no-store, must-revalidate',
+        }
       });
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: corsHeaders });
