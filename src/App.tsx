@@ -14,7 +14,7 @@ import {
 import { Header } from './components/Header';
 import { StatsBar } from './components/StatsBar';
 import { CategoryTabs } from './components/CategoryTabs';
-import { MainCategoryFilter } from './components/MainCategoryFilter';
+import { MainCategoryBar } from './components/MainCategoryBar';
 import { ProductCard } from './components/ProductCard';
 import { PriceChartModal } from './components/PriceChartModal';
 import { ManualChecker } from './components/ManualChecker';
@@ -98,17 +98,18 @@ export const App: React.FC = () => {
     return data.offer_categories[activeTab]?.products || [];
   }, [data, activeTab]);
 
-  // Compute available categories dynamically for current offer tab
-  const availableCategories = useMemo(() => {
-    if (!currentProducts || currentProducts.length === 0) return [];
+  // Compute category offer counts matching Digikala's main categories
+  const productCategoryCounts = useMemo(() => {
+    if (!currentProducts) return {};
     const counts: Record<string, number> = {};
     for (const p of currentProducts) {
       const cat = p.category_title || 'سایر';
       counts[cat] = (counts[cat] || 0) + 1;
+      if (cat === 'کالای دیجیتال' && (p.title_fa.includes('گوشی') || p.title_fa.includes('موبایل'))) {
+        counts['موبایل'] = (counts['موبایل'] || 0) + 1;
+      }
     }
-    return Object.entries(counts)
-      .map(([title, count]) => ({ title, count }))
-      .sort((a, b) => b.count - a.count);
+    return counts;
   }, [currentProducts]);
 
   // Filter and sort products of the active category
@@ -121,7 +122,16 @@ export const App: React.FC = () => {
 
     // 1. Topic Category filter
     if (selectedCategory !== null) {
-      list = list.filter((p) => (p.category_title || 'سایر') === selectedCategory);
+      list = list.filter((p) => {
+        const cat = p.category_title || 'سایر';
+        if (selectedCategory === 'موبایل') {
+          return cat === 'موبایل' || p.title_fa.includes('گوشی') || p.title_fa.includes('موبایل');
+        }
+        if (selectedCategory === 'کالاهای سوپرمارکتی' || selectedCategory === 'سوپرمارکت') {
+          return cat === 'کالاهای سوپرمارکتی' || cat === 'سوپرمارکت';
+        }
+        return cat === selectedCategory;
+      });
     }
 
     // 2. Verdict filter (Real vs Fake vs All)
@@ -241,13 +251,16 @@ export const App: React.FC = () => {
               totalUniqueCount={data.total_products}
             />
 
-            {/* Main Category Filter */}
-            <MainCategoryFilter
-              categories={availableCategories}
-              selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
-              totalCount={currentProducts.length}
-            />
+            {/* Main Category Filter (Digikala Visual Style with Drag & Floating Arrows) */}
+            {data.main_categories && data.main_categories.length > 0 && (
+              <MainCategoryBar
+                categories={data.main_categories}
+                selectedCategory={selectedCategory}
+                onSelectCategory={setSelectedCategory}
+                productCategoryCounts={productCategoryCounts}
+                totalProductsCount={currentProducts.length}
+              />
+            )}
 
             {/* Search & Sort Bar */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 my-5 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">

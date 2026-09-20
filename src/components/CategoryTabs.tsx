@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, Zap, Calendar, Clock, ShoppingBag, Eye, Flame } from 'lucide-react';
 import { OfferCategory } from '../types';
+import { useDragScroll } from '../hooks/useDragScroll';
 
 interface CategoryTabsProps {
   categories: Record<string, OfferCategory>;
@@ -25,13 +26,30 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
   totalUniqueCount,
 }) => {
   const categoryList = Object.values(categories);
+  const {
+    scrollRef,
+    isDragging,
+    dragMoved,
+    onMouseDown,
+  } = useDragScroll();
+
+  const handleTabClick = (key: string) => {
+    if (dragMoved) return;
+    onSelectTab(key);
+  };
 
   return (
     <div className="w-full border-b border-slate-200 dark:border-slate-800 my-4 overflow-hidden">
-      <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-3 pt-1 px-1">
+      <div
+        ref={scrollRef}
+        onMouseDown={onMouseDown}
+        className={`flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 pt-1 px-1 select-none ${
+          isDragging ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+      >
         {/* All Incredible Offers Combined Option */}
         <button
-          onClick={() => onSelectTab('ALL_OFFERS')}
+          onClick={() => handleTabClick('ALL_OFFERS')}
           className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm whitespace-nowrap transition-all select-none ${
             activeTab === 'ALL_OFFERS'
               ? 'bg-red-600 text-white shadow-md shadow-red-500/20 font-bold scale-[1.02]'
@@ -59,7 +77,7 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
           return (
             <button
               key={cat.key}
-              onClick={() => onSelectTab(cat.key)}
+              onClick={() => handleTabClick(cat.key)}
               className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm whitespace-nowrap transition-all select-none ${
                 isActive
                   ? 'bg-red-600 text-white shadow-md shadow-red-500/20 font-bold scale-[1.02]'
