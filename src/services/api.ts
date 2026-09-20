@@ -158,9 +158,9 @@ export async function fetchLiveProductChartDirect(
     candidateProxies.push(activeProxy);
   }
 
-  // Add default public fallbacks if activeProxy is different
+  // Add default public fallbacks matching chandchandi
   const commonFallbacks = [
-    'https://corsproxy.io/?url=',
+    '', // Direct
     'https://api.allorigins.win/raw?url=',
     'https://api.codetabs.com/v1/proxy?quest=',
   ];
