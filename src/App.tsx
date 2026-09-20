@@ -105,6 +105,9 @@ export const App: React.FC = () => {
     for (const p of currentProducts) {
       const cat = p.category_title || 'سایر';
       counts[cat] = (counts[cat] || 0) + 1;
+      if (p.category_id) {
+        counts[String(p.category_id)] = (counts[String(p.category_id)] || 0) + 1;
+      }
       if (cat === 'کالای دیجیتال' && (p.title_fa.includes('گوشی') || p.title_fa.includes('موبایل'))) {
         counts['موبایل'] = (counts['موبایل'] || 0) + 1;
       }
@@ -125,7 +128,10 @@ export const App: React.FC = () => {
       list = list.filter((p) => {
         const cat = p.category_title || 'سایر';
         if (selectedCategory === 'موبایل') {
-          return cat === 'موبایل' || p.title_fa.includes('گوشی') || p.title_fa.includes('موبایل');
+          return cat === 'موبایل' || p.category_id === 1 || p.title_fa.includes('گوشی') || p.title_fa.includes('موبایل');
+        }
+        if (selectedCategory === 'اسباب بازی') {
+          return cat === 'اسباب بازی' || p.category_id === 6027 || p.title_fa.includes('اسباب بازی') || p.title_fa.includes('لگو');
         }
         if (selectedCategory === 'کالاهای سوپرمارکتی' || selectedCategory === 'سوپرمارکت') {
           return cat === 'کالاهای سوپرمارکتی' || cat === 'سوپرمارکت';
