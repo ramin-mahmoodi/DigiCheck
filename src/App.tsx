@@ -177,7 +177,7 @@ export const App: React.FC = () => {
   }, [currentProducts, selectedCategory, verdictFilter, searchQuery, sortBy]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-slate-950 transition-colors">
       {/* Header */}
       <Header
         darkMode={darkMode}
