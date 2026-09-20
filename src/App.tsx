@@ -48,7 +48,7 @@ export const App: React.FC = () => {
 
   // Filter States
   const [activeTab, setActiveTab] = useState<string>('incredible_products_list');
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [verdictFilter, setVerdictFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'default' | 'score_desc' | 'discount_desc' | 'price_asc' | 'price_desc'>('default');
@@ -86,18 +86,31 @@ export const App: React.FC = () => {
     loadData();
   };
 
+  // Compute available categories dynamically for current offer tab
+  const currentOfferCategory = data?.offer_categories[activeTab];
+  const availableCategories = useMemo(() => {
+    if (!currentOfferCategory) return [];
+    const counts: Record<string, number> = {};
+    for (const p of currentOfferCategory.products) {
+      const cat = p.category_title || 'سایر';
+      counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .map(([title, count]) => ({ title, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [currentOfferCategory]);
+
   // Filter and sort products of the active category
   const filteredProducts = useMemo(() => {
-    if (!data || !data.offer_categories[activeTab]) {
+    if (!currentOfferCategory) {
       return [];
     }
 
-    const currentCategory = data.offer_categories[activeTab];
-    let list = [...currentCategory.products];
+    let list = [...currentOfferCategory.products];
 
     // 1. Topic Category filter
-    if (selectedCategoryId !== null) {
-      list = list.filter((p) => p.category_id === selectedCategoryId);
+    if (selectedCategory !== null) {
+      list = list.filter((p) => (p.category_title || 'سایر') === selectedCategory);
     }
 
     // 2. Verdict filter (Real vs Fake vs All)
@@ -140,7 +153,7 @@ export const App: React.FC = () => {
     }
 
     return list;
-  }, [data, activeTab, selectedCategoryId, verdictFilter, searchQuery, sortBy]);
+  }, [currentOfferCategory, selectedCategory, verdictFilter, searchQuery, sortBy]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors">
@@ -212,18 +225,17 @@ export const App: React.FC = () => {
               activeTab={activeTab}
               onSelectTab={(tabKey) => {
                 setActiveTab(tabKey);
-                setSelectedCategoryId(null); // Reset subcategory when switching offer tab
+                setSelectedCategory(null); // Reset subcategory when switching offer tab
               }}
             />
 
-            {/* Main Category Filter (Mobiles, Electronics, Fashion, etc.) */}
-            {data.main_categories && data.main_categories.length > 0 && (
-              <MainCategoryFilter
-                categories={data.main_categories}
-                selectedCategoryId={selectedCategoryId}
-                onSelectCategory={setSelectedCategoryId}
-              />
-            )}
+            {/* Main Category Filter */}
+            <MainCategoryFilter
+              categories={availableCategories}
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              totalCount={currentOfferCategory?.products.length || 0}
+            />
 
             {/* Search & Sort Bar */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 my-5 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -281,7 +293,7 @@ export const App: React.FC = () => {
                 </p>
                 <button
                   onClick={() => {
-                    setSelectedCategoryId(null);
+                    setSelectedCategory(null);
                     setVerdictFilter('ALL');
                     setSearchQuery('');
                   }}

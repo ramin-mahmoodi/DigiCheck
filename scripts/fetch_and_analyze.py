@@ -226,6 +226,7 @@ def main():
             images = p.get('images', {})
             main_img = images.get('main', {}).get('url', [''])[0] if isinstance(images.get('main', {}).get('url'), list) and images.get('main', {}).get('url') else ''
 
+            cat_title = p.get('data_layer', {}).get('item_category2') or 'سایر'
             cat_id = None
             if 'category' in p and isinstance(p['category'], dict):
                 cat_id = p['category'].get('id')
@@ -243,6 +244,7 @@ def main():
                 'rating': p.get('rating', {}).get('rate', 0) if isinstance(p.get('rating'), dict) else 0,
                 'rating_count': p.get('rating', {}).get('count', 0) if isinstance(p.get('rating'), dict) else 0,
                 'category_id': cat_id,
+                'category_title': cat_title,
                 'url': f"https://www.digikala.com{url_uri}",
                 'offer_type': key,
                 'offer_type_title': meta['title'],

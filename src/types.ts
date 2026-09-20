@@ -35,6 +35,7 @@ export interface ProductItem {
   rating: number;
   rating_count: number;
   category_id: number | null;
+  category_title?: string;
   url: string;
   offer_type: string;
   offer_type_title: string;

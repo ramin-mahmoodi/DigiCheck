@@ -25,8 +25,8 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
   const categoryList = Object.values(categories);
 
   return (
-    <div className="border-b border-slate-200 dark:border-slate-800 my-4">
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2">
+    <div className="w-full border-b border-slate-200 dark:border-slate-800 my-4 overflow-hidden">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 pt-1 px-1">
         {categoryList.map((cat) => {
           const isActive = activeTab === cat.key;
           const Icon = ICON_MAP[cat.icon] || Sparkles;
@@ -35,16 +35,16 @@ export const CategoryTabs: React.FC<CategoryTabsProps> = ({
             <button
               key={cat.key}
               onClick={() => onSelectTab(cat.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm whitespace-nowrap transition-all ${
+              className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-xs sm:text-sm whitespace-nowrap transition-all select-none ${
                 isActive
                   ? 'bg-red-600 text-white shadow-md shadow-red-500/20 font-bold scale-[1.02]'
                   : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
               }`}
             >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-red-500'}`} />
-              <span>{cat.title}</span>
+              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-red-500'}`} />
+              <span className="shrink-0">{cat.title}</span>
               <span
-                className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                className={`text-xs px-2 py-0.5 rounded-full font-bold shrink-0 ${
                   isActive
                     ? 'bg-white/20 text-white'
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
