@@ -26,7 +26,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { ProductItem, ProductChartData, PriceChartHistoryPoint } from '../types';
-import { fetchProductChartWithFallback, getStoredProxyUrl } from '../services/api';
+import { fetchProductChartWithFallback } from '../services/api';
 
 interface PriceChartModalProps {
   product: ProductItem | null;
@@ -48,8 +48,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
     setIsLiveFetching(true);
 
     try {
-      const proxyUrl = getStoredProxyUrl();
-      const result = await fetchProductChartWithFallback(product.id, proxyUrl);
+      const result = await fetchProductChartWithFallback(product.id);
       setChartData(result.data);
       setIsLiveSource(true);
       setLatencyMs(result.latencyMs || null);

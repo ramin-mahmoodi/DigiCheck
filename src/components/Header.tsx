@@ -1,11 +1,10 @@
 import React from 'react';
-import { Sun, Moon, Search, Sparkles, RefreshCw, ShieldCheck, Server } from 'lucide-react';
+import { Sun, Moon, Search, Sparkles, RefreshCw, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
   onOpenManualChecker: () => void;
-  onOpenProxySettings: () => void;
   lastUpdatedFa: string;
   onRefresh: () => void;
   isRefreshing: boolean;
@@ -15,7 +14,6 @@ export const Header: React.FC<HeaderProps> = ({
   darkMode,
   onToggleDarkMode,
   onOpenManualChecker,
-  onOpenProxySettings,
   lastUpdatedFa,
   onRefresh,
   isRefreshing,
@@ -59,15 +57,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Search className="w-4 h-4" />
               <span className="hidden xs:inline">استعلام کالا با لینک</span>
-            </button>
-
-            {/* Proxy Settings Button */}
-            <button
-              onClick={onOpenProxySettings}
-              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="تنظیمات پروکسی و اتصال زنده"
-            >
-              <Server className="w-5 h-5" />
             </button>
 
             {/* Refresh Button */}

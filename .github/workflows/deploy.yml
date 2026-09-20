@@ -1,9 +1,11 @@
-name: Deploy to GitHub Pages
+name: Deploy to GitHub Pages (Every 6 Hours)
 
 on:
   push:
     branches:
       - main
+  schedule:
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,17 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python Dependencies
+        run: pip install requests
+
+      - name: Collect Deals and Price Charts via Android Gateway
+        run: python scripts/fetch_and_analyze.py
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

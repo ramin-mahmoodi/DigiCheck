@@ -22,8 +22,7 @@ import { MainCategoryBar } from './components/MainCategoryBar';
 import { ProductCard } from './components/ProductCard';
 import { PriceChartModal } from './components/PriceChartModal';
 import { ManualChecker } from './components/ManualChecker';
-import { ProxySettingsModal } from './components/ProxySettingsModal';
-import { fetchOffersData, fetchLiveOffers } from './services/api';
+import { fetchOffersData } from './services/api';
 import { OffersDataResponse, ProductItem } from './types';
 
 export const App: React.FC = () => {
@@ -63,7 +62,6 @@ export const App: React.FC = () => {
   // Modal States
   const [selectedProductForChart, setSelectedProductForChart] = useState<ProductItem | null>(null);
   const [isManualCheckerOpen, setIsManualCheckerOpen] = useState(false);
-  const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
 
   // Fetch initial data
   const loadData = async () => {
@@ -88,18 +86,10 @@ export const App: React.FC = () => {
     setIsRefreshing(true);
     setError(null);
     try {
-      // 1. First attempt live fetch of current incredible offers via proxy
-      const liveOffers = await fetchLiveOffers();
-      setData(liveOffers);
+      const response = await fetchOffersData();
+      setData(response);
     } catch (err: any) {
-      console.warn('[DigiCheck] Live offers fetch failed, falling back to static offers cache:', err);
-      // 2. Fallback to static offers data
-      try {
-        const response = await fetchOffersData();
-        setData(response);
-      } catch (fallbackErr: any) {
-        setError(fallbackErr.message || 'خطا در دریافت اطلاعات شگفت‌انگیز دیجی‌کالا');
-      }
+      setError(err.message || 'خطا در دریافت اطلاعات شگفت‌انگیز دیجی‌کالا');
     } finally {
       setIsRefreshing(false);
     }
@@ -245,7 +235,6 @@ export const App: React.FC = () => {
         darkMode={darkMode}
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onOpenManualChecker={() => setIsManualCheckerOpen(true)}
-        onOpenProxySettings={() => setIsProxyModalOpen(true)}
         lastUpdatedFa={data?.last_updated_fa || ''}
         onRefresh={handleRefresh}
         isRefreshing={isRefreshing}
@@ -513,11 +502,6 @@ export const App: React.FC = () => {
         isOpen={isManualCheckerOpen}
         onClose={() => setIsManualCheckerOpen(false)}
         onOpenChartWithData={(prod) => setSelectedProductForChart(prod)}
-      />
-
-      <ProxySettingsModal
-        isOpen={isProxyModalOpen}
-        onClose={() => setIsProxyModalOpen(false)}
       />
     </div>
   );

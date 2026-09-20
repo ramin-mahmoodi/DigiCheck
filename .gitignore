@@ -30,3 +30,6 @@ __pycache__/
 .venv/
 env/
 venv/
+
+# Generated Data (Zero-commit architecture)
+public/data/
