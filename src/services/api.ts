@@ -361,15 +361,23 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
     return await r.json();
   };
 
-  // Fetch landing + 15 catalog pages in parallel to load 300+ products (matching the full 299+ catalog)
-  const pagePromises = Array.from({ length: 15 }, (_, i) =>
-    fetchJson(`https://api.digikala.com/v1/incredible-offers/products/?page=${i + 1}`).catch(() => null)
-  );
-
-  const [landingJson, ...pageResults] = await Promise.all([
+  // 1. Fetch landing page + page 1
+  const [landingJson, p1Json] = await Promise.all([
     fetchJson('https://api.digikala.com/v1/incredible-offers/'),
-    ...pagePromises,
+    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=1').catch(() => null),
   ]);
+
+  const totalPages = p1Json?.data?.pager?.total_pages || 39;
+
+  // 2. Fetch all remaining catalog pages in parallel (pages 2 to totalPages)
+  const remainingPagePromises = [];
+  for (let i = 2; i <= Math.min(totalPages, 40); i++) {
+    remainingPagePromises.push(
+      fetchJson(`https://api.digikala.com/v1/incredible-offers/products/?page=${i}`).catch(() => null)
+    );
+  }
+  const remainingResults = await Promise.all(remainingPagePromises);
+  const pageResults = [p1Json, ...remainingResults];
 
   const rawData = landingJson?.data || {};
 

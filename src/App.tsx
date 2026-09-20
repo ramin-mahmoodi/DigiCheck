@@ -10,6 +10,10 @@ import {
   Github,
   Heart,
   Layers,
+  ChevronRight,
+  ChevronLeft,
+  ChevronsRight,
+  ChevronsLeft,
 } from 'lucide-react';
 import { Header } from './components/Header';
 import { StatsBar } from './components/StatsBar';
@@ -53,6 +57,8 @@ export const App: React.FC = () => {
   const [verdictFilter, setVerdictFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'default' | 'score_desc' | 'discount_desc' | 'price_asc' | 'price_desc'>('default');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 50;
 
   // Modal States
   const [selectedProductForChart, setSelectedProductForChart] = useState<ProductItem | null>(null);
@@ -200,6 +206,18 @@ export const App: React.FC = () => {
     return list;
   }, [currentProducts, selectedCategory, verdictFilter, searchQuery, sortBy]);
 
+  // Reset pagination to page 1 whenever any filter or tab changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, selectedCategory, verdictFilter, searchQuery, sortBy]);
+
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE) || 1;
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
+
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-slate-950 transition-colors">
       {/* Header */}
@@ -323,15 +341,117 @@ export const App: React.FC = () => {
 
             {/* Product Cards Grid */}
             {filteredProducts.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 my-6">
-                {filteredProducts.map((product) => (
-                  <ProductCard
-                    key={`${product.offer_type}-${product.id}`}
-                    product={product}
-                    onOpenChart={(prod) => setSelectedProductForChart(prod)}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 my-6">
+                  {paginatedProducts.map((product) => (
+                    <ProductCard
+                      key={`${product.offer_type}-${product.id}`}
+                      product={product}
+                      onOpenChart={(prod) => setSelectedProductForChart(prod)}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination Controls (50 items per page) */}
+                {totalPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 my-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                      نمایش {((currentPage - 1) * ITEMS_PER_PAGE + 1).toLocaleString('fa-IR')} تا{' '}
+                      {Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length).toLocaleString('fa-IR')} از{' '}
+                      {filteredProducts.length.toLocaleString('fa-IR')} کالا (صفحه {currentPage.toLocaleString('fa-IR')} از {totalPages.toLocaleString('fa-IR')})
+                    </div>
+
+                    <div className="flex items-center gap-1.5" dir="rtl">
+                      {/* First Page */}
+                      <button
+                        onClick={() => {
+                          setCurrentPage(1);
+                          window.scrollTo({ top: 380, behavior: 'smooth' });
+                        }}
+                        disabled={currentPage === 1}
+                        className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        title="صفحه اول"
+                      >
+                        <ChevronsRight className="w-4 h-4" />
+                      </button>
+
+                      {/* Prev Page */}
+                      <button
+                        onClick={() => {
+                          setCurrentPage((prev) => Math.max(1, prev - 1));
+                          window.scrollTo({ top: 380, behavior: 'smooth' });
+                        }}
+                        disabled={currentPage === 1}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                        <span className="hidden sm:inline">قبلی</span>
+                      </button>
+
+                      {/* Page Numbers */}
+                      <div className="flex items-center gap-1 mx-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter((p) => {
+                            return (
+                              p === 1 ||
+                              p === totalPages ||
+                              (p >= currentPage - 2 && p <= currentPage + 2)
+                            );
+                          })
+                          .map((p, idx, arr) => {
+                            const prev = arr[idx - 1];
+                            return (
+                              <React.Fragment key={p}>
+                                {prev && p - prev > 1 && (
+                                  <span className="px-1 text-slate-400 text-xs select-none">...</span>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setCurrentPage(p);
+                                    window.scrollTo({ top: 380, behavior: 'smooth' });
+                                  }}
+                                  className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                                    currentPage === p
+                                      ? 'bg-red-600 text-white shadow-md shadow-red-500/20 scale-105'
+                                      : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700'
+                                  }`}
+                                >
+                                  {p.toLocaleString('fa-IR')}
+                                </button>
+                              </React.Fragment>
+                            );
+                          })}
+                      </div>
+
+                      {/* Next Page */}
+                      <button
+                        onClick={() => {
+                          setCurrentPage((prev) => Math.min(totalPages, prev + 1));
+                          window.scrollTo({ top: 380, behavior: 'smooth' });
+                        }}
+                        disabled={currentPage === totalPages}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                      >
+                        <span className="hidden sm:inline">بعدی</span>
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+
+                      {/* Last Page */}
+                      <button
+                        onClick={() => {
+                          setCurrentPage(totalPages);
+                          window.scrollTo({ top: 380, behavior: 'smooth' });
+                        }}
+                        disabled={currentPage === totalPages}
+                        className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                        title="صفحه آخر"
+                      >
+                        <ChevronsLeft className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-6">
                 <Layers className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
