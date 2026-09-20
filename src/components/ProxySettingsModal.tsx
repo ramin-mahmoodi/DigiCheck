@@ -43,18 +43,13 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       const stored = getStoredProxyUrl();
-      if (stored === '') {
-        setSelectedPreset('custom');
+      const matched = DEFAULT_PROXIES.find((p) => p.url === stored);
+      if (matched) {
+        setSelectedPreset(matched.id);
         setCustomUrl('');
       } else {
-        const matched = DEFAULT_PROXIES.find((p) => p.url === stored);
-        if (matched) {
-          setSelectedPreset(matched.id);
-          setCustomUrl('');
-        } else {
-          setSelectedPreset('custom');
-          setCustomUrl(stored);
-        }
+        setSelectedPreset('custom');
+        setCustomUrl(stored);
       }
       setTestResult(null);
       setSaveSuccess(false);
@@ -96,7 +91,7 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
 
   const handleReset = () => {
     const defaultUrl = DEFAULT_PROXIES[0].url;
-    setSelectedPreset('allorigins');
+    setSelectedPreset(DEFAULT_PROXIES[0].id);
     setCustomUrl('');
     setStoredProxyUrl(defaultUrl);
     setTestResult(null);
@@ -106,32 +101,56 @@ export const ProxySettingsModal: React.FC<ProxySettingsModalProps> = ({
   async fetch(request) {
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Accept, User-Agent',
-      'Access-Control-Max-Age': '86400',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': '*',
     };
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders });
-    }
+    if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
     const url = new URL(request.url);
     const targetUrl = url.searchParams.get('url');
-    if (!targetUrl) {
-      return new Response(JSON.stringify({ error: 'Missing ?url= parameter' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-    const res = await fetch(targetUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'Referer': 'https://www.digikala.com/',
+    if (!targetUrl) return new Response('Missing ?url=', { status: 400, headers: corsHeaders });
+
+    try {
+      let currentUrl = targetUrl;
+      const cookieMap = new Map();
+      let response;
+      let hops = 0;
+
+      while (hops < 5) {
+        const headers = new Headers();
+        headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36');
+        headers.set('Accept', 'application/json, text/plain, */*');
+        headers.set('Referer', 'https://www.digikala.com/');
+        if (cookieMap.size > 0) {
+          headers.set('Cookie', Array.from(cookieMap.entries()).map(([k, v]) => \`\${k}=\${v}\`).join('; '));
+        }
+
+        response = await fetch(currentUrl, { method: 'GET', headers, redirect: 'manual' });
+
+        const setCookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [response.headers.get('set-cookie')].filter(Boolean);
+        for (const raw of setCookies) {
+          const [key, ...rest] = raw.split(';')[0].split('=');
+          if (key && rest.length) cookieMap.set(key.trim(), rest.join('=').trim());
+        }
+
+        if ([301, 302, 303, 307, 308].includes(response.status)) {
+          const loc = response.headers.get('Location');
+          if (loc) {
+            currentUrl = new URL(loc, currentUrl).href;
+            hops++;
+            continue;
+          }
+        }
+        break;
       }
-    });
-    const body = await res.text();
-    return new Response(body, {
-      status: res.status,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+
+      const body = await response.text();
+      return new Response(body, {
+        status: response.status,
+        headers: { ...corsHeaders, 'Content-Type': response.headers.get('Content-Type') || 'application/json; charset=utf-8' }
+      });
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), { status: 502, headers: corsHeaders });
+    }
   }
 };`;
 

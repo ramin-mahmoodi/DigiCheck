@@ -10,6 +10,12 @@ export interface ProxyPreset {
 
 export const DEFAULT_PROXIES: ProxyPreset[] = [
   {
+    id: 'cf-worker',
+    name: 'ورکر کلودفلر (پیش‌فرض)',
+    url: 'https://digikala.ramin1378i.workers.dev/?url=',
+    description: 'پروکسی اختصاصی کلودفلر - بدون تحریم، پرسرعت و با دور زدن محدودیت‌های CORS',
+  },
+  {
     id: 'direct',
     name: 'اتصال مستقیم (بدون پروکسی)',
     url: '',
@@ -24,8 +30,8 @@ export function getStoredProxyUrl(): string {
   if (saved !== null) {
     return saved;
   }
-  // Default to empty (user enters their Cloudflare Worker URL)
-  return '';
+  // Default to the dedicated Cloudflare worker
+  return 'https://digikala.ramin1378i.workers.dev/?url=';
 }
 
 export function setStoredProxyUrl(url: string): void {
@@ -57,7 +63,8 @@ export function buildProxyUrl(targetUrl: string, proxyUrl?: string): string {
 
 export async function testProxyConnection(proxyUrl: string): Promise<{ success: boolean; latencyMs: number; error?: string }> {
   const startTime = Date.now();
-  const testTargetUrl = 'https://api.digikala.com/v1/product/4545846/price-chart/';
+  // Use a fast, highly-available Digikala API endpoint for testing proxy health
+  const testTargetUrl = 'https://api.digikala.com/v1/search/?q=mobile';
   const fullUrl = buildProxyUrl(testTargetUrl, proxyUrl);
 
   try {
@@ -77,7 +84,7 @@ export async function testProxyConnection(proxyUrl: string): Promise<{ success: 
     if (!res.ok) {
       let detail = `پاسخ با کد خطای ${res.status} دریافت شد`;
       if (res.status === 401) {
-        detail = 'خطای ۴۰۱: این پروکسی عمومی نیاز به کلید API پولی دارد. لطفاً از ورکر شخصی کلودفلر (۱۰۰٪ رایگان) استفاده کنید.';
+        detail = 'خطای ۴۰۱: این پروکسی نیاز به کلید API دارد.';
       } else if (res.status === 403) {
         detail = 'خطای ۴۰۳: دسترسی از طریق این سرور مسدود شده است.';
       } else if (res.status >= 500) {
@@ -91,7 +98,7 @@ export async function testProxyConnection(proxyUrl: string): Promise<{ success: 
     }
 
     const data = await res.json();
-    if (data?.data?.price_chart || data?.status === 200) {
+    if (data?.status === 200 || data?.data) {
       return {
         success: true,
         latencyMs,
