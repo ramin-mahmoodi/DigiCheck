@@ -72,9 +72,9 @@ export default {
 
         // Handle redirects manually
         if ([301, 302, 303, 307, 308].includes(response.status)) {
-          const location = response.headers.get('Location');
-          if (location) {
-            currentUrl = new URL(location, currentUrl).href;
+          const redirectUrl = response.headers.get('Location');
+          if (redirectUrl) {
+            currentUrl = new URL(redirectUrl, currentUrl).href;
             hops++;
             continue;
           }
