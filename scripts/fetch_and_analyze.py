@@ -3,7 +3,6 @@ import json
 import os
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # Set UTF-8 output
@@ -68,7 +67,7 @@ def analyze_discount(selling_price: int, rrp_price: int, discount_percent: int, 
             'verdict_label': 'تاریخچه ناکافی',
             'verdict_color': 'gray',
             'score': 50,
-            'reason': 'داده‌های تاریخچه قیمت برای این کالا در دسترس نیست.',
+            'reason': 'داده‌های تاریخچه قیمت برای این کالا کمتر از ۲ رکورد است.',
             'min_30d': selling_price,
             'max_30d': rrp_price,
             'avg_30d': selling_price,
@@ -78,22 +77,18 @@ def analyze_discount(selling_price: int, rrp_price: int, discount_percent: int, 
             'rrp_inflated': False
         }
 
-    # Extract clean history points (only marketable if possible)
     valid_points = [p for p in history if p.get('selling_price') and p.get('selling_price') > 0]
     if not valid_points:
         valid_points = history
 
-    # Last 30 points (roughly last 30 days of records)
     recent_30 = valid_points[-30:]
     recent_selling = [p['selling_price'] for p in recent_30]
-    recent_rrp = [p.get('rrp_price', p['selling_price']) for p in recent_30]
 
     min_30d = min(recent_selling)
     max_30d = max(recent_selling)
     avg_30d = int(sum(recent_selling) / len(recent_selling))
     all_time_min = min(p['selling_price'] for p in valid_points)
 
-    # Point right before the offer (1 or 2 entries before the last)
     prev_point = valid_points[-2] if len(valid_points) >= 2 else valid_points[-1]
     prev_selling = prev_point['selling_price']
     prev_rrp = prev_point.get('rrp_price', prev_selling)
@@ -101,49 +96,37 @@ def analyze_discount(selling_price: int, rrp_price: int, discount_percent: int, 
     is_all_time_low = (selling_price <= all_time_min)
     is_30d_low = (selling_price <= min_30d)
 
-    # Check RRP inflation: Did RRP increase significantly right before or at discount?
     rrp_inflated = False
     if prev_rrp > 0 and rrp_price > prev_rrp * 1.15 and selling_price >= prev_selling * 0.98:
         rrp_inflated = True
 
-    # Price difference from 30d minimum
     diff_from_min = selling_price - min_30d
     diff_from_prev = selling_price - prev_selling
 
-    # Calculate Verdict
-    # Case 1: Fake - RRP inflated artificially while selling price didn't drop
     if rrp_inflated:
         verdict = 'FAKE_INFLATED'
         verdict_label = 'تخفیف کاذب (باد کردن قیمت پایه)'
         verdict_color = 'red'
         score = 15
-        reason = f'قیمت خط‌خورده به صورت صوری از {prev_rrp:,} به {rrp_price:,} ریال افزایش یافته است؛ قیمت فروش عملاً ارزان نشده است.'
-
-    # Case 2: Fake - Current selling price is higher than previous days
+        reason = f'قیمت خط‌خورده به صورت صوری از {prev_rrp:,} به {rrp_price:,} ریال افزایش یافته است؛ قیمت واقعی ارزان نشده است.'
     elif diff_from_prev > 0 and selling_price > prev_selling * 1.03:
         verdict = 'FAKE_MORE_EXPENSIVE'
         verdict_label = 'تخفیف الکی (گران‌تر از دیروز!)'
         verdict_color = 'red'
         score = 10
         reason = f'قیمت فعلی کالا در شگفت‌انگیز حتی از قیمت روز قبل ({prev_selling:,} ریال) گران‌تر است!'
-
-    # Case 3: Fake - Current selling price is exactly equal to normal previous price
     elif abs(diff_from_prev) < prev_selling * 0.01 and selling_price >= avg_30d * 0.98:
         verdict = 'FAKE_UNCHANGED'
         verdict_label = 'تخفیف صوری (بدون تغییر قیمت)'
         verdict_color = 'orange'
         score = 30
-        reason = f'این کالا در روزهای گذشته نیز با همین قیمت ({prev_selling:,} ریال) به فروش می‌رسیده و تخفیف واقعی داده نشده است.'
-
-    # Case 4: Great Deal - All-time low or lowest in 30 days
+        reason = f'این کالا در روزهای گذشته نیز با همین قیمت ({prev_selling:,} ریال) به فروش می‌رسیده و تخفیف جدیدی ندارد.'
     elif is_30d_low or is_all_time_low:
         verdict = 'REAL_GREAT'
         verdict_label = 'تخفیف ۱۰۰٪ واقعی (کف قیمت ماه)'
         verdict_color = 'green'
         score = 95 if is_all_time_low else 88
         reason = f'قیمت فعلی ({selling_price:,} ریال) ارزان‌ترین قیمت ثبت‌شده در ۳۰ روز اخیر برای این کالا است.'
-
-    # Case 5: Moderate Deal - Below 30d average and cheaper than yesterday
     elif selling_price < avg_30d and selling_price < prev_selling:
         verdict = 'REAL_MODERATE'
         verdict_label = 'تخفیف واقعی و منصفانه'
@@ -151,8 +134,6 @@ def analyze_discount(selling_price: int, rrp_price: int, discount_percent: int, 
         score = 75
         saving_percent = round((1 - selling_price / avg_30d) * 100)
         reason = f'قیمت فعلی حدود {saving_percent}٪ پایین‌تر از میانگین قیمت یک ماه گذشته کالا است.'
-
-    # Default: Slight discount or neutral
     else:
         verdict = 'NEUTRAL'
         verdict_label = 'تخفیف جزئی'
@@ -177,29 +158,41 @@ def analyze_discount(selling_price: int, rrp_price: int, discount_percent: int, 
         'prev_rrp': prev_rrp,
     }
 
-def fetch_chart(product_id: int):
-    """Fetch price chart for a single product and return history"""
+def fetch_chart_with_retry(session: requests.Session, product_id: int, max_retries: int = 2):
+    """Fetch price chart with backoff on rate limits"""
     url = PRICE_CHART_URL_TEMPLATE.format(product_id=product_id)
-    try:
-        res = requests.get(url, headers=HEADERS, timeout=8)
-        if res.status_code == 200:
-            json_data = res.json()
-            pc = json_data.get('data', {}).get('price_chart', [])
-            if pc and len(pc) > 0 and 'history' in pc[0]:
-                return pc[0]['history']
-            elif pc and len(pc) > 0 and 'history' in pc[-1]:
-                return pc[-1]['history']
-        return []
-    except Exception as e:
-        print(f"Error fetching chart for {product_id}: {e}")
-        return []
+
+    for attempt in range(max_retries + 1):
+        try:
+            res = session.get(url, headers=HEADERS, timeout=8)
+            if res.status_code == 200:
+                json_data = res.json()
+                pc = json_data.get('data', {}).get('price_chart', [])
+                if pc and len(pc) > 0 and 'history' in pc[0]:
+                    return pc[0]['history']
+                elif pc and len(pc) > 0 and 'history' in pc[-1]:
+                    return pc[-1]['history']
+                return []
+            elif res.status_code in (400, 429):
+                # Rate limit hit - backoff
+                print(f"⚠️ Rate limit for {product_id} (Attempt {attempt+1}/{max_retries+1}). Waiting 12s...")
+                time.sleep(12)
+            else:
+                time.sleep(0.5)
+        except Exception as e:
+            print(f"Network error for {product_id}: {e}")
+            time.sleep(1)
+
+    return []
 
 def main():
-    print("🚀 Starting Digikala Incredible Offers Crawler & Price Analyzer...")
+    print("🚀 Starting Digikala Incredible Offers Crawler & Price Analyzer (V2)...")
     start_time = time.time()
 
+    session = requests.Session()
+
     # 1. Fetch Offers
-    res = requests.get(DIGIKALA_OFFERS_URL, headers=HEADERS, timeout=12)
+    res = session.get(DIGIKALA_OFFERS_URL, headers=HEADERS, timeout=12)
     if res.status_code != 200:
         print(f"❌ Failed to fetch offers: HTTP {res.status_code}")
         sys.exit(1)
@@ -211,6 +204,7 @@ def main():
     # 2. Extract products from separate offer categories
     categorized_offers = {}
     all_product_ids = set()
+    # Map pid to a LIST of product references across all categories
     product_map = {}
 
     for key, meta in OFFER_CATEGORY_KEYS.items():
@@ -229,11 +223,9 @@ def main():
             rrp_price = price_info.get('rrp_price', selling_price)
             discount_percent = price_info.get('discount_percent', 0)
 
-            # Extract main image
             images = p.get('images', {})
             main_img = images.get('main', {}).get('url', [''])[0] if isinstance(images.get('main', {}).get('url'), list) and images.get('main', {}).get('url') else ''
 
-            # Extract category
             cat_id = None
             if 'category' in p and isinstance(p['category'], dict):
                 cat_id = p['category'].get('id')
@@ -260,7 +252,7 @@ def main():
 
             formatted_products.append(prod_item)
             all_product_ids.add(pid)
-            product_map[pid] = prod_item
+            product_map.setdefault(pid, []).append(prod_item)
 
         categorized_offers[key] = {
             'key': key,
@@ -271,50 +263,70 @@ def main():
             'products': formatted_products
         }
 
-    print(f"📊 Total unique products to analyze: {len(all_product_ids)}")
+    print(f"📊 Total unique products: {len(all_product_ids)}")
 
-    # 3. Concurrently fetch price charts for all unique products
-    print("⏳ Fetching price charts and running analysis algorithm...")
+    # 3. Smart Chart Fetching (Check disk cache first, then fetch uncached with gentle delay)
+    print("⏳ Processing price charts and running analysis algorithm...")
     chart_cache = {}
+    uncached_pids = []
 
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        future_to_pid = {executor.submit(fetch_chart, pid): pid for pid in all_product_ids}
-        for future in as_completed(future_to_pid):
-            pid = future_to_pid[future]
+    for pid in all_product_ids:
+        chart_file_path = os.path.join(CHARTS_DIR, f"{pid}.json")
+        if os.path.exists(chart_file_path):
             try:
-                history = future.result()
-                chart_cache[pid] = history
-            except Exception as e:
-                chart_cache[pid] = []
+                with open(chart_file_path, 'r', encoding='utf-8') as cf:
+                    cached_data = json.load(cf)
+                    if cached_data.get('history'):
+                        chart_cache[pid] = cached_data['history']
+            except Exception:
+                uncached_pids.append(pid)
+        else:
+            uncached_pids.append(pid)
 
-    # 4. Run Analysis & Save Individual Chart JSONs
+    print(f"📁 Already cached on disk: {len(chart_cache)} products")
+    print(f"🌐 Need to fetch online: {len(uncached_pids)} products")
+
+    # Fetch uncached products sequentially with gentle delay to avoid 429
+    for i, pid in enumerate(uncached_pids):
+        print(f"  [{i+1}/{len(uncached_pids)}] Fetching chart for {pid}...")
+        history = fetch_chart_with_retry(session, pid)
+        if history:
+            chart_cache[pid] = history
+        time.sleep(0.4)
+
+    # 4. Run Analysis & Save Chart JSONs & Update ALL references
     verdict_counts = {}
     for pid, history in chart_cache.items():
-        prod = product_map.get(pid)
-        if not prod:
+        prod_list = product_map.get(pid, [])
+        if not prod_list:
             continue
+
+        sample_prod = prod_list[0]
 
         if history and len(history) > 0:
             analysis = analyze_discount(
-                prod['selling_price'],
-                prod['rrp_price'],
-                prod['discount_percent'],
+                sample_prod['selling_price'],
+                sample_prod['rrp_price'],
+                sample_prod['discount_percent'],
                 history
             )
-            prod['has_chart'] = True
-            prod['analysis'] = analysis
+
+            # Update ALL occurrences of this product across categories!
+            for prod in prod_list:
+                prod['has_chart'] = True
+                prod['analysis'] = analysis
 
             verdict_key = analysis['verdict']
             verdict_counts[verdict_key] = verdict_counts.get(verdict_key, 0) + 1
 
-            # Save individual chart file for fast modal fetch
+            # Save / update individual chart file
             chart_file_path = os.path.join(CHARTS_DIR, f"{pid}.json")
             with open(chart_file_path, 'w', encoding='utf-8') as cf:
                 json.dump({
                     'product_id': pid,
-                    'title': prod['title_fa'],
-                    'selling_price': prod['selling_price'],
-                    'rrp_price': prod['rrp_price'],
+                    'title': sample_prod['title_fa'],
+                    'selling_price': sample_prod['selling_price'],
+                    'rrp_price': sample_prod['rrp_price'],
                     'analysis': analysis,
                     'history': history
                 }, cf, ensure_ascii=False)
@@ -334,7 +346,9 @@ def main():
         json.dump(final_output, f, ensure_ascii=False, indent=2)
 
     elapsed = time.time() - start_time
-    print(f"✨ Successfully generated '{output_file_path}' in {elapsed:.2f} seconds!")
+    total_with_chart = sum(verdict_counts.values())
+    print(f"✨ Successfully completed in {elapsed:.2f} seconds!")
+    print(f"📊 Total products with charts: {total_with_chart} / {len(all_product_ids)}")
     print(f"📈 Verdict Distribution: {verdict_counts}")
 
 if __name__ == '__main__':

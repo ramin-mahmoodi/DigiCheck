@@ -7,8 +7,10 @@ import {
   XCircle,
   AlertTriangle,
   TrendingDown,
-  Info,
-  Calendar,
+  RefreshCw,
+  Clock,
+  Tag,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -21,7 +23,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { ProductItem, ProductChartData, PriceChartHistoryPoint } from '../types';
-import { fetchCachedProductChart } from '../services/api';
+import { fetchCachedProductChart, fetchLiveProductChart } from '../services/api';
 
 interface PriceChartModalProps {
   product: ProductItem | null;
@@ -32,47 +34,65 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
   const [chartData, setChartData] = useState<ProductChartData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLiveFetching, setIsLiveFetching] = useState(false);
+
+  const loadChart = async (isLiveRetry: boolean = false) => {
+    if (!product) return;
+
+    if (isLiveRetry) {
+      setIsLiveFetching(true);
+    } else {
+      setLoading(true);
+    }
+    setError(null);
+
+    try {
+      // 1. First try cached data
+      let data = await fetchCachedProductChart(product.id);
+
+      // 2. If not cached and is live retry, attempt live fetch
+      if (!data && isLiveRetry) {
+        data = await fetchLiveProductChart(product.id);
+      }
+
+      if (data && data.history && data.history.length > 0) {
+        setChartData(data);
+        setError(null);
+      } else {
+        setError('چارت تاریخی این کالا هنوز در کش ذخیره نشده است.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'خطا در بارگذاری چارت');
+    } finally {
+      setLoading(false);
+      setIsLiveFetching(false);
+    }
+  };
 
   useEffect(() => {
     if (!product) {
       setChartData(null);
+      setError(null);
       return;
     }
-
-    const loadChart = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchCachedProductChart(product.id);
-        if (data) {
-          setChartData(data);
-        } else {
-          setError('تاریخچه قیمت برای این کالا هنوز کش نشده است.');
-        }
-      } catch (err: any) {
-        setError(err.message || 'خطا در بارگذاری چارت');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadChart();
+    loadChart(false);
   }, [product]);
 
   if (!product) return null;
 
-  // Format chart data for Recharts (convert to Tomans for human readability)
   const history = chartData?.history || [];
   const formattedPoints = history.map((item: PriceChartHistoryPoint) => ({
     day: item.day,
     selling: Math.round(item.selling_price / 10),
     rrp: Math.round((item.rrp_price || item.selling_price) / 10),
-    seller: item.seller || 'نامشخص',
+    seller: item.seller || 'دیجی‌کالا',
     warranty: item.product_warranty || '',
   }));
 
   const analysis = chartData?.analysis || product.analysis;
   const currentSellingToman = Math.round(product.selling_price / 10);
+  const currentRrpToman = Math.round(product.rrp_price / 10);
+  const savedAmountToman = currentRrpToman > currentSellingToman ? currentRrpToman - currentSellingToman : 0;
   const min30dToman = analysis?.min_30d ? Math.round(analysis.min_30d / 10) : null;
   const avg30dToman = analysis?.avg_30d ? Math.round(analysis.avg_30d / 10) : null;
 
@@ -113,7 +133,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
         {/* Modal Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-6">
           {/* Analysis Verdict Banner */}
-          {analysis && (
+          {analysis ? (
             <div
               className={`p-4 rounded-2xl border ${
                 analysis.verdict.startsWith('REAL')
@@ -147,6 +167,20 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                 </div>
               </div>
             </div>
+          ) : (
+            <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+              <div className="flex items-start gap-3">
+                <Tag className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                    تخفیف شگفت‌انگیز رسمی دیجی‌کالا ({product.discount_percent.toLocaleString('fa-IR')}٪ تخفیف)
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                    تاریخچه قیمتی این محصول در چرخه فعلی خزش کش نشده است. با دکمه زیر می‌توانید چارت آن را به صورت زنده استعلام بگیرید یا در بروزرسانی بعدی ذخیره خواهد شد.
+                  </p>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Key Metrics Grid */}
@@ -159,62 +193,61 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
               </div>
             </div>
 
-            {min30dToman && (
+            {currentRrpToman > currentSellingToman && (
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-right">
-                <span className="text-xs text-slate-400 font-medium">کف قیمت ۳۰ روز اخیر:</span>
-                <div className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-1">
-                  {min30dToman.toLocaleString('fa-IR')}
-                  <span className="text-xs font-normal text-slate-400 mr-1">تومان</span>
+                <span className="text-xs text-slate-400 font-medium">قیمت خط‌خورده (پایه):</span>
+                <div className="text-base font-black text-slate-500 line-through mt-1">
+                  {currentRrpToman.toLocaleString('fa-IR')}
+                  <span className="text-xs font-normal mr-1">تومان</span>
                 </div>
               </div>
             )}
 
-            {avg30dToman && (
+            {savedAmountToman > 0 && (
               <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-right">
-                <span className="text-xs text-slate-400 font-medium">میانگین ۳۰ روزه:</span>
-                <div className="text-base font-black text-slate-700 dark:text-slate-300 mt-1">
-                  {avg30dToman.toLocaleString('fa-IR')}
-                  <span className="text-xs font-normal text-slate-400 mr-1">تومان</span>
+                <span className="text-xs text-slate-400 font-medium">سود اسمی شما:</span>
+                <div className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                  {savedAmountToman.toLocaleString('fa-IR')}
+                  <span className="text-xs font-normal mr-1">تومان</span>
                 </div>
               </div>
             )}
 
             <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-right">
-              <span className="text-xs text-slate-400 font-medium">درصد تخفیف رسمی:</span>
+              <span className="text-xs text-slate-400 font-medium">درصد تخفیف دیجی‌کالا:</span>
               <div className="text-base font-black text-red-600 dark:text-red-400 mt-1">
                 {product.discount_percent.toLocaleString('fa-IR')}٪
               </div>
             </div>
           </div>
 
-          {/* Interactive Chart */}
+          {/* Interactive Chart or Live Fetch Prompt */}
           <div className="bg-slate-50 dark:bg-slate-800/40 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-800">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
               <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-slate-400" />
+                <Clock className="w-4 h-4 text-slate-400" />
                 <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  روند تغییرات قیمت فروش و خط‌خورده در روزهای گذشته
+                  نمودار تغییرات قیمت فروش در روزهای گذشته
                 </span>
               </div>
-              <div className="flex items-center gap-4 text-xs">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-full bg-blue-600"></span>
-                  <span className="text-slate-500">قیمت فروش واقعی</span>
+              {formattedPoints.length > 0 && (
+                <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-blue-600"></span>
+                    <span className="text-slate-500">قیمت فروش</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-1 bg-red-400"></span>
+                    <span className="text-slate-500">قیمت مصوب (RRP)</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-1 bg-red-400"></span>
-                  <span className="text-slate-500">قیمت خط‌خورده (RRP)</span>
-                </div>
-              </div>
+              )}
             </div>
 
             {loading ? (
-              <div className="h-64 flex items-center justify-center text-sm text-slate-400">
-                در حال بارگذاری چارت قیمت...
-              </div>
-            ) : error ? (
-              <div className="h-64 flex items-center justify-center text-sm text-rose-500">
-                {error}
+              <div className="h-64 flex flex-col items-center justify-center text-sm text-slate-400 gap-3">
+                <div className="w-8 h-8 border-3 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                <span>در حال بارگذاری چارت قیمت...</span>
               </div>
             ) : formattedPoints.length > 0 ? (
               <div className="h-72 w-full" dir="ltr">
@@ -236,21 +269,21 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                     <Tooltip
                       content={({ active, payload, label }) => {
                         if (active && payload && payload.length) {
-                          const data = payload[0].payload;
+                          const item = payload[0].payload;
                           return (
                             <div className="bg-white dark:bg-slate-800 p-3 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 text-xs space-y-1.5 text-right font-vazir">
                               <div className="font-bold text-slate-700 dark:text-slate-300 border-b pb-1">
                                 تاریخ: {label}
                               </div>
                               <div className="text-blue-600 dark:text-blue-400 font-bold">
-                                قیمت فروش: {data.selling.toLocaleString('fa-IR')} تومان
+                                قیمت فروش: {item.selling.toLocaleString('fa-IR')} تومان
                               </div>
                               <div className="text-red-500 line-through">
-                                قیمت مصوب: {data.rrp.toLocaleString('fa-IR')} تومان
+                                قیمت مصوب: {item.rrp.toLocaleString('fa-IR')} تومان
                               </div>
-                              {data.seller && (
+                              {item.seller && (
                                 <div className="text-slate-400 pt-1 text-[11px]">
-                                  فروشنده: {data.seller}
+                                  فروشنده: {item.seller}
                                 </div>
                               )}
                             </div>
@@ -287,8 +320,27 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center text-sm text-slate-400">
-                تاریخچه‌ای برای نمایش در چارت موجود نیست.
+              <div className="h-64 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                <ShieldAlert className="w-10 h-10 text-amber-500" />
+                <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  تاریخچه این کالا در کش موجود نیست
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
+                  برخی کالاها (به‌ویژه کالاهای تازه اضافه شده یا سوپرمارکتی) چارت روزانه قبلی ندارند، یا در چرخه فعلی استعلام محدود شده‌اند.
+                </p>
+                <button
+                  onClick={() => loadChart(true)}
+                  disabled={isLiveFetching}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/20 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLiveFetching ? 'animate-spin' : ''}`} />
+                  <span>{isLiveFetching ? 'در حال استعلام از دیجی‌کالا...' : 'استعلام زنده چارت این کالا'}</span>
+                </button>
+                {error && (
+                  <span className="text-[11px] text-rose-500 font-medium">
+                    {error}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -297,7 +349,9 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
         {/* Modal Footer */}
         <div className="flex items-center justify-between p-4 sm:p-5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800">
           <div className="text-xs text-slate-500 dark:text-slate-400">
-            تعداد رکوردهای ثبت‌شده در چارت: {formattedPoints.length.toLocaleString('fa-IR')} روز
+            {formattedPoints.length > 0
+              ? `تعداد رکوردهای ثبت‌شده: ${formattedPoints.length.toLocaleString('fa-IR')} روز`
+              : 'وضعیت: تخفیف مستقیم دیجی‌کالا'}
           </div>
           <div className="flex items-center gap-2">
             <a

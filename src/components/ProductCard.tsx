@@ -17,9 +17,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenChart }
   const renderVerdictBadge = () => {
     if (!analysis) {
       return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-          <LineChart className="w-3.5 h-3.5" />
-          <span>بدون چارت</span>
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
+          <span>شگفت‌انگیز رسمی</span>
         </span>
       );
     }
@@ -154,7 +153,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenChart }
             className="w-full mt-2 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors"
           >
             <LineChart className="w-4 h-4 text-red-500" />
-            <span>تحلیل چارت قیمت</span>
+            <span>{product.has_chart ? 'تحلیل چارت قیمت' : 'استعلام چارت و قیمت'}</span>
           </button>
         </div>
       </div>
