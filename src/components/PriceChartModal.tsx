@@ -23,7 +23,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { ProductItem, ProductChartData, PriceChartHistoryPoint } from '../types';
-import { fetchCachedProductChart, fetchProductChartWithFallback } from '../services/api';
+import { fetchCachedProductChart, fetchProductChartWithFallback, getStoredProxyUrl } from '../services/api';
 
 interface PriceChartModalProps {
   product: ProductItem | null;
@@ -38,7 +38,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
   const [isLiveSource, setIsLiveSource] = useState(false);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
-  const loadChart = async (isLiveRetry: boolean = true) => {
+  const loadChart = async (isLiveRetry: boolean = false) => {
     if (!product) return;
 
     if (isLiveRetry) {
@@ -48,29 +48,36 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
     }
     setError(null);
 
-    // If cached chart exists, load it immediately so UI doesn't look empty while live fetch is in-flight
-    fetchCachedProductChart(product.id)
-      .then((cached) => {
-        if (cached && !chartData) {
-          setChartData(cached);
-          setIsLiveSource(false);
-        }
-      })
-      .catch(() => {});
-
-    try {
-      const result = await fetchProductChartWithFallback(product.id, undefined, isLiveRetry);
-      setChartData(result.data);
-      setIsLiveSource(result.source === 'live');
-      setLatencyMs(result.latencyMs || null);
-      setError(null);
-    } catch (err: any) {
-      if (!chartData) {
-        setError(err.message || 'خطا در استعلام چارت کالا');
-      }
-    } finally {
+    // 1. Immediately load bundled/cached chart - instant 0s response, zero errors!
+    const cached = await fetchCachedProductChart(product.id);
+    if (cached) {
+      setChartData(cached);
+      setIsLiveSource(false);
       setLoading(false);
-      setIsLiveFetching(false);
+    }
+
+    // 2. Only attempt live proxy fetch if a proxy is configured or user manually clicked retry
+    const proxyUrl = getStoredProxyUrl();
+    if (proxyUrl || isLiveRetry) {
+      try {
+        const result = await fetchProductChartWithFallback(product.id, proxyUrl, true);
+        setChartData(result.data);
+        setIsLiveSource(result.source === 'live');
+        setLatencyMs(result.latencyMs || null);
+        setError(null);
+      } catch (err: any) {
+        if (!cached) {
+          setError(err.message || 'خطا در استعلام چارت کالا');
+        }
+      } finally {
+        setIsLiveFetching(false);
+        setLoading(false);
+      }
+    } else {
+      if (!cached) {
+        setError('چارت تاریخی برای این کالا هنوز ثبت نشده است.');
+      }
+      setLoading(false);
     }
   };
 
@@ -82,7 +89,7 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
       setLatencyMs(null);
       return;
     }
-    loadChart(true);
+    loadChart(false);
   }, [product]);
 
   if (!product) return null;
