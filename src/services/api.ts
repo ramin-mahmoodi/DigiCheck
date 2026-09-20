@@ -361,14 +361,14 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
     return await r.json();
   };
 
-  // Fetch landing + pages 1, 2, 3, 4, 5
-  const [landingJson, p1Json, p2Json, p3Json, p4Json, p5Json] = await Promise.all([
+  // Fetch landing + 15 catalog pages in parallel to load 300+ products (matching the full 299+ catalog)
+  const pagePromises = Array.from({ length: 15 }, (_, i) =>
+    fetchJson(`https://api.digikala.com/v1/incredible-offers/products/?page=${i + 1}`).catch(() => null)
+  );
+
+  const [landingJson, ...pageResults] = await Promise.all([
     fetchJson('https://api.digikala.com/v1/incredible-offers/'),
-    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=1').catch(() => null),
-    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=2').catch(() => null),
-    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=3').catch(() => null),
-    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=4').catch(() => null),
-    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=5').catch(() => null),
+    ...pagePromises,
   ]);
 
   const rawData = landingJson?.data || {};
@@ -394,7 +394,7 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
 
   // Collect paginated products into all_offers_list
   const paginatedRawProducts: any[] = [];
-  for (const pRes of [p1Json, p2Json, p3Json, p4Json, p5Json]) {
+  for (const pRes of pageResults) {
     if (Array.isArray(pRes?.data?.products)) {
       paginatedRawProducts.push(...pRes.data.products);
     }
