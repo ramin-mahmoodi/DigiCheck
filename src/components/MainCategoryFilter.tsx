@@ -22,7 +22,7 @@ export const MainCategoryFilter: React.FC<MainCategoryFilterProps> = ({
 
   return (
     <div className="w-full my-3 overflow-hidden">
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-2 px-1">
+      <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar py-2 px-1">
         {/* All Categories Button */}
         <button
           onClick={() => onSelectCategory(null)}

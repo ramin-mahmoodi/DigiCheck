@@ -47,7 +47,7 @@ export const App: React.FC = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Filter States
-  const [activeTab, setActiveTab] = useState<string>('incredible_products_list');
+  const [activeTab, setActiveTab] = useState<string>('ALL_OFFERS');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [verdictFilter, setVerdictFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -64,11 +64,6 @@ export const App: React.FC = () => {
     try {
       const response = await fetchOffersData();
       setData(response);
-      // If active tab doesn't exist, pick the first available
-      const availableKeys = Object.keys(response.offer_categories);
-      if (availableKeys.length > 0 && !response.offer_categories[activeTab]) {
-        setActiveTab(availableKeys[0]);
-      }
     } catch (err: any) {
       setError(err.message || 'خطا در دریافت اطلاعات شگفت‌انگیز دیجی‌کالا');
     } finally {
@@ -86,27 +81,43 @@ export const App: React.FC = () => {
     loadData();
   };
 
+  // Products for currently active offer tab (or all unique products if ALL_OFFERS)
+  const currentProducts = useMemo(() => {
+    if (!data) return [];
+    if (activeTab === 'ALL_OFFERS') {
+      const map = new Map<number, ProductItem>();
+      for (const cat of Object.values(data.offer_categories)) {
+        for (const p of cat.products) {
+          if (!map.has(p.id)) {
+            map.set(p.id, p);
+          }
+        }
+      }
+      return Array.from(map.values());
+    }
+    return data.offer_categories[activeTab]?.products || [];
+  }, [data, activeTab]);
+
   // Compute available categories dynamically for current offer tab
-  const currentOfferCategory = data?.offer_categories[activeTab];
   const availableCategories = useMemo(() => {
-    if (!currentOfferCategory) return [];
+    if (!currentProducts || currentProducts.length === 0) return [];
     const counts: Record<string, number> = {};
-    for (const p of currentOfferCategory.products) {
+    for (const p of currentProducts) {
       const cat = p.category_title || 'سایر';
       counts[cat] = (counts[cat] || 0) + 1;
     }
     return Object.entries(counts)
       .map(([title, count]) => ({ title, count }))
       .sort((a, b) => b.count - a.count);
-  }, [currentOfferCategory]);
+  }, [currentProducts]);
 
   // Filter and sort products of the active category
   const filteredProducts = useMemo(() => {
-    if (!currentOfferCategory) {
+    if (!currentProducts || currentProducts.length === 0) {
       return [];
     }
 
-    let list = [...currentOfferCategory.products];
+    let list = [...currentProducts];
 
     // 1. Topic Category filter
     if (selectedCategory !== null) {
@@ -153,7 +164,7 @@ export const App: React.FC = () => {
     }
 
     return list;
-  }, [currentOfferCategory, selectedCategory, verdictFilter, searchQuery, sortBy]);
+  }, [currentProducts, selectedCategory, verdictFilter, searchQuery, sortBy]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors">
@@ -227,6 +238,7 @@ export const App: React.FC = () => {
                 setActiveTab(tabKey);
                 setSelectedCategory(null); // Reset subcategory when switching offer tab
               }}
+              totalUniqueCount={data.total_products}
             />
 
             {/* Main Category Filter */}
@@ -234,7 +246,7 @@ export const App: React.FC = () => {
               categories={availableCategories}
               selectedCategory={selectedCategory}
               onSelectCategory={setSelectedCategory}
-              totalCount={currentOfferCategory?.products.length || 0}
+              totalCount={currentProducts.length}
             />
 
             {/* Search & Sort Bar */}
