@@ -147,21 +147,42 @@ export async function fetchLiveProductChartDirect(
   const timeoutId = setTimeout(() => controller.abort(), 3000);
 
   try {
-    const res = await fetch(fetchUrl, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-    clearTimeout(timeoutId);
+    let json: any = null;
 
-    if (!res.ok) {
-      throw new Error(`پروکسی با کد ${res.status} پاسخ داد`);
+    // 1. Try active proxy
+    try {
+      const res = await fetch(fetchUrl, {
+        signal: controller.signal,
+        headers: { 'Accept': 'application/json' },
+      });
+      if (res.ok) {
+        const parsed = await res.json();
+        if (parsed?.status === 200) {
+          json = parsed;
+        }
+      }
+    } catch (e) {}
+
+    // 2. If proxy was blocked by Digikala WAF (400), attempt direct fetch (works if user has CORS extension on Iran IP)
+    if (!json) {
+      try {
+        const directRes = await fetch(targetUrl, {
+          signal: controller.signal,
+          headers: { 'Accept': 'application/json' },
+        });
+        if (directRes.ok) {
+          const parsed = await directRes.json();
+          if (parsed?.status === 200) {
+            json = parsed;
+          }
+        }
+      } catch (e) {}
     }
 
-    const json = await res.json();
-    if (json?.status && json.status !== 200) {
-      throw new Error(json.message || `خطای سرور دیجی‌کالا (${json.status})`);
+    clearTimeout(timeoutId);
+
+    if (!json || json.status !== 200) {
+      throw new Error(json?.message || 'دیجی‌کالا استعلام چارت روزانه را به دلیل محدودیت فایروال محدود کرد.');
     }
 
     const pc = json?.data?.price_chart || [];
