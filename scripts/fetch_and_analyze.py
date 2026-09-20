@@ -537,8 +537,8 @@ def main():
         }
         print(f"📊 Tab '{meta['title']}': {len(prods)} products", flush=True)
 
-    # 5. Concurrently fetch 30-day Price Charts with reduced concurrency (3 workers) & polite pacing
-    print(f"📈 4. Fetching 30-day price charts for {len(product_dict)} products (Paced at 3 workers with 4-attempt backoff)...", flush=True)
+    # 5. Concurrently fetch 30-day Price Charts (3 workers with pacing & backoff)
+    print(f"📈 5. Fetching 30-day price charts for {len(product_dict)} products...", flush=True)
     all_pids = list(product_dict.keys())
     chart_success_count = 0
     no_chart_on_digikala = 0
