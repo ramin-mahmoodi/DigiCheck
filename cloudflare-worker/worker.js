@@ -30,7 +30,6 @@ export default {
     try {
       let currentUrl = targetUrl;
       const cookieMap = new Map();
-      cookieMap.set('tracker_session', Math.random().toString(36).substring(2, 10));
 
       let response;
       let hops = 0;
