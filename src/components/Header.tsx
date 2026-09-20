@@ -30,10 +30,10 @@ export const Header: React.FC<HeaderProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-extrabold text-lg sm:text-xl text-slate-900 dark:text-white tracking-tight">
-                  شکارچی تخفیف دیجی‌کالا
+                  دیجی‌چک (DigiCheck)
                 </h1>
                 <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400">
-                  نسخه چارت قیمت
+                  شگفت‌سنج
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
