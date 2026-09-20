@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, LineChart, CheckCircle2, XCircle, AlertTriangle, TrendingDown } from 'lucide-react';
+import { ExternalLink, CheckCircle2, XCircle, AlertTriangle, TrendingDown } from 'lucide-react';
 import { ProductItem } from '../types';
 
 interface ProductCardProps {
@@ -69,7 +69,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenChart }
   };
 
   return (
-    <div className="group flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:shadow-lg transition-all duration-200 overflow-hidden">
+    <div
+      onClick={() => onOpenChart(product)}
+      className="group flex flex-col bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-900/60 hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer"
+    >
       {/* Top Image & Badges */}
       <div className="relative aspect-square w-full bg-white p-4 flex items-center justify-center border-b border-slate-100 dark:border-slate-800/60">
         {product.image ? (
@@ -97,6 +100,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenChart }
           href={product.url}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           className="absolute top-3 left-3 p-1.5 rounded-lg bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 transition-colors shadow-sm"
           title="مشاهده در دیجی‌کالا"
         >
@@ -146,15 +150,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenChart }
               {analysis.reason}
             </div>
           )}
-
-          {/* Action Button: Open Price Chart */}
-          <button
-            onClick={() => onOpenChart(product)}
-            className="w-full mt-2 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors"
-          >
-            <LineChart className="w-4 h-4 text-red-500" />
-            <span>{product.has_chart ? 'تحلیل چارت قیمت' : 'استعلام چارت و قیمت'}</span>
-          </button>
         </div>
       </div>
     </div>

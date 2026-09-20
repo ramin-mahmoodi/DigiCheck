@@ -133,87 +133,65 @@ export async function fetchLiveProductChartDirect(
   proxyUrl?: string
 ): Promise<ProductChartData> {
   const targetUrl = `https://api.digikala.com/v1/product/${productId}/price-chart/`;
-  
-  // Build proxy candidates list:
   const activeProxy = proxyUrl !== undefined ? proxyUrl.trim() : getStoredProxyUrl().trim();
-  const candidateProxies: string[] = [];
+  const fetchUrl = buildProxyUrl(targetUrl, activeProxy);
 
-  if (activeProxy) {
-    candidateProxies.push(activeProxy);
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-  // Add default public fallbacks matching chandchandi
-  const commonFallbacks = [
-    '', // Direct
-    'https://api.allorigins.win/raw?url=',
-    'https://api.codetabs.com/v1/proxy?quest=',
-  ];
-  for (const fb of commonFallbacks) {
-    if (!candidateProxies.includes(fb)) {
-      candidateProxies.push(fb);
+  try {
+    const res = await fetch(fetchUrl, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error(`پروکسی با کد ${res.status} پاسخ داد`);
     }
-  }
 
-  let lastError: any = null;
+    const json = await res.json();
+    if (json?.status && json.status !== 200) {
+      throw new Error(json.message || `خطای سرور دیجی‌کالا (${json.status})`);
+    }
 
-  for (const pUrl of candidateProxies) {
-    const fetchUrl = buildProxyUrl(targetUrl, pUrl);
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6500);
+    const pc = json?.data?.price_chart || [];
+    let history: PriceChartHistoryPoint[] = [];
 
-      const res = await fetch(fetchUrl, {
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        lastError = new Error(`پروکسی با کد ${res.status} پاسخ داد`);
-        continue;
-      }
-
-      const json = await res.json();
-      const pc = json?.data?.price_chart || [];
-      let history: PriceChartHistoryPoint[] = [];
-
-      if (Array.isArray(pc)) {
-        for (const item of pc) {
-          if (Array.isArray(item.history) && item.history.length > 0) {
-            history = item.history;
-            break;
-          }
+    if (Array.isArray(pc)) {
+      for (const item of pc) {
+        if (Array.isArray(item.history) && item.history.length > 0) {
+          history = item.history;
+          break;
         }
       }
-
-      if (!history || history.length === 0) {
-        throw new Error('تاریخچه قیمتی برای این کالا در دیجی‌کالا یافت نشد.');
-      }
-
-      const lastPoint = history[history.length - 1];
-      const sellingPrice = lastPoint.selling_price || 0;
-      const rrpPrice = lastPoint.rrp_price || sellingPrice;
-      const discountPercent = rrpPrice > sellingPrice ? Math.round((1 - sellingPrice / rrpPrice) * 100) : 0;
-
-      const analysis = analyzeDiscountClient(sellingPrice, rrpPrice, discountPercent, history);
-
-      return {
-        product_id: productId,
-        title: `کالای کد ${productId}`,
-        selling_price: sellingPrice,
-        rrp_price: rrpPrice,
-        analysis,
-        history,
-        is_live: true,
-      };
-    } catch (err: any) {
-      lastError = err;
     }
-  }
 
-  throw lastError || new Error('خطا در استعلام چارت کالا از طریق پروکسی');
+    if (!history || history.length === 0) {
+      throw new Error('تاریخچه قیمتی برای این کالا در دیجی‌کالا یافت نشد.');
+    }
+
+    const lastPoint = history[history.length - 1];
+    const sellingPrice = lastPoint.selling_price || 0;
+    const rrpPrice = lastPoint.rrp_price || sellingPrice;
+    const discountPercent = rrpPrice > sellingPrice ? Math.round((1 - sellingPrice / rrpPrice) * 100) : 0;
+
+    const analysis = analyzeDiscountClient(sellingPrice, rrpPrice, discountPercent, history);
+
+    return {
+      product_id: productId,
+      title: `کالای کد ${productId}`,
+      selling_price: sellingPrice,
+      rrp_price: rrpPrice,
+      analysis,
+      history,
+      is_live: true,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export interface FetchChartResult {
@@ -368,16 +346,23 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
   ]);
 
   const totalPages = p1Json?.data?.pager?.total_pages || 39;
-
-  // 2. Fetch all remaining catalog pages in parallel (pages 2 to totalPages)
-  const remainingPagePromises = [];
+  const pageNumbers: number[] = [];
   for (let i = 2; i <= Math.min(totalPages, 40); i++) {
-    remainingPagePromises.push(
-      fetchJson(`https://api.digikala.com/v1/incredible-offers/products/?page=${i}`).catch(() => null)
-    );
+    pageNumbers.push(i);
   }
-  const remainingResults = await Promise.all(remainingPagePromises);
-  const pageResults = [p1Json, ...remainingResults];
+
+  // 2. Fetch all remaining catalog pages in batches of 8 to ensure 100% of 769 products are fetched without socket drops
+  const pageResults = [p1Json];
+  const chunkSize = 8;
+  for (let i = 0; i < pageNumbers.length; i += chunkSize) {
+    const chunk = pageNumbers.slice(i, i + chunkSize);
+    const chunkResults = await Promise.all(
+      chunk.map((p) =>
+        fetchJson(`https://api.digikala.com/v1/incredible-offers/products/?page=${p}`).catch(() => null)
+      )
+    );
+    pageResults.push(...chunkResults);
+  }
 
   const rawData = landingJson?.data || {};
 

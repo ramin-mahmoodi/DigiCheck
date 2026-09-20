@@ -58,7 +58,7 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'default' | 'score_desc' | 'discount_desc' | 'price_asc' | 'price_desc'>('default');
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const ITEMS_PER_PAGE = 50;
+  const ITEMS_PER_PAGE = 20;
 
   // Modal States
   const [selectedProductForChart, setSelectedProductForChart] = useState<ProductItem | null>(null);
@@ -352,15 +352,9 @@ export const App: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Pagination Controls (50 items per page) */}
+                {/* Pagination Controls (20 items per page) */}
                 {totalPages > 1 && (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 my-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                    <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      نمایش {((currentPage - 1) * ITEMS_PER_PAGE + 1).toLocaleString('fa-IR')} تا{' '}
-                      {Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length).toLocaleString('fa-IR')} از{' '}
-                      {filteredProducts.length.toLocaleString('fa-IR')} کالا (صفحه {currentPage.toLocaleString('fa-IR')} از {totalPages.toLocaleString('fa-IR')})
-                    </div>
-
+                  <div className="flex items-center justify-center p-4 my-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div className="flex items-center gap-1.5" dir="rtl">
                       {/* First Page */}
                       <button
