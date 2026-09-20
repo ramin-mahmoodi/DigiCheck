@@ -117,6 +117,12 @@ export const App: React.FC = () => {
     if (!currentProducts) return {};
     const counts: Record<string, number> = {};
     for (const p of currentProducts) {
+      if (p.main_category_title) {
+        counts[p.main_category_title] = (counts[p.main_category_title] || 0) + 1;
+      }
+      if (p.main_category_id) {
+        counts[String(p.main_category_id)] = (counts[String(p.main_category_id)] || 0) + 1;
+      }
       const cat = p.category_title || 'سایر';
       counts[cat] = (counts[cat] || 0) + 1;
       if (p.category_id) {
@@ -160,15 +166,18 @@ export const App: React.FC = () => {
     // 1. Topic Category filter
     if (selectedCategory !== null) {
       list = list.filter((p) => {
+        if (p.main_category_title && p.main_category_title === selectedCategory) {
+          return true;
+        }
         const cat = p.category_title || 'سایر';
         if (selectedCategory === 'موبایل') {
-          return cat === 'موبایل' || p.category_id === 1 || p.title_fa.includes('گوشی') || p.title_fa.includes('موبایل');
+          return cat === 'موبایل' || p.category_id === 1 || p.main_category_id === 1 || p.title_fa.includes('گوشی') || p.title_fa.includes('موبایل');
         }
         if (selectedCategory === 'اسباب بازی') {
-          return cat === 'اسباب بازی' || p.category_id === 6027 || p.title_fa.includes('اسباب بازی') || p.title_fa.includes('لگو');
+          return cat === 'اسباب بازی' || p.category_id === 6027 || p.main_category_id === 6027 || p.title_fa.includes('اسباب بازی') || p.title_fa.includes('لگو');
         }
         if (selectedCategory === 'کالاهای سوپرمارکتی' || selectedCategory === 'سوپرمارکت') {
-          return cat === 'کالاهای سوپرمارکتی' || cat === 'سوپرمارکت';
+          return cat === 'کالاهای سوپرمارکتی' || cat === 'سوپرمارکت' || p.offer_type === 'fresh_incredible_products';
         }
         return cat === selectedCategory;
       });
