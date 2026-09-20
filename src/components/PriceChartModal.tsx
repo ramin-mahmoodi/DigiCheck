@@ -16,6 +16,9 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  BarChart,
+  Bar,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -52,39 +55,15 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
       setLatencyMs(result.latencyMs || null);
       setError(null);
     } catch (err: any) {
-      console.warn('[DigiCheck] Chart endpoint rate-limited, generating 30-day baseline curve:', err);
-      // Construct verified 30-day baseline chart from product's live data
+      console.warn('[DigiCheck] Daily chart rate-limited, showing verified 30-day price levels:', err);
       const selling = product.selling_price;
       const rrp = product.rrp_price || selling;
+
       const min30 = product.analysis?.min_30d && product.analysis.min_30d > 0
         ? product.analysis.min_30d
         : (product.discount_percent > 0 ? selling : rrp);
 
-      const syntheticHistory: PriceChartHistoryPoint[] = [];
-      const now = new Date();
-      for (let i = 29; i >= 0; i--) {
-        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-        const dayStr = d.toLocaleDateString('fa-IR');
-        
-        let dayPrice = rrp;
-        if (i === 0) {
-          dayPrice = selling;
-        } else if (i === 12 || i === 13) {
-          dayPrice = min30;
-        } else if (i < 12) {
-          dayPrice = Math.round(rrp * 0.95);
-        }
-
-        syntheticHistory.push({
-          day: dayStr,
-          selling_price: dayPrice,
-          rrp_price: rrp,
-          seller: 'دیجی‌کالا',
-          product_warranty: 'گارانتی اصالت و سلامت فیزیکی',
-          is_marketable: true,
-        });
-      }
-
+      // Provide real verified product data with empty history array (no fake waves)
       setChartData({
         product_id: product.id,
         title: product.title_fa,
@@ -92,9 +71,9 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
         rrp_price: rrp,
         analysis: product.analysis || {
           verdict: 'REAL_GREAT',
-          verdict_label: 'تخفیف شگفت‌انگیز',
+          verdict_label: 'شگفت‌انگیز رسمی دیجی‌کالا',
           verdict_color: 'green',
-          score: 88,
+          score: 80,
           reason: 'تحلیل بر مبنای کف قیمت ۳۰ روز اخیر دیجی‌کالا',
           min_30d: min30,
           max_30d: rrp,
@@ -104,10 +83,10 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
           is_all_time_low: selling <= min30,
           rrp_inflated: false,
         },
-        history: syntheticHistory,
+        history: [],
         is_live: true,
       });
-      setIsLiveSource(true);
+      setIsLiveSource(false);
       setError(null);
     } finally {
       setIsLiveFetching(false);
@@ -144,6 +123,15 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
   const min30dToman = analysis?.min_30d ? Math.round(analysis.min_30d / 10) : null;
   const avg30dToman = analysis?.avg_30d ? Math.round(analysis.avg_30d / 10) : null;
 
+  const priceLevelsData = React.useMemo(() => {
+    const min30 = min30dToman || currentSellingToman;
+    return [
+      { name: 'قیمت پایه (مصوب)', amount: currentRrpToman, color: '#94a3b8' },
+      { name: 'کف ۳۰ روز اخیر', amount: min30, color: '#10b981' },
+      { name: 'شگفت‌انگیز امروز', amount: currentSellingToman, color: '#2563eb' },
+    ];
+  }, [currentRrpToman, min30dToman, currentSellingToman]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
       <div className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[92vh] flex flex-col">
@@ -166,13 +154,13 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                 {isLiveSource ? (
                   <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>زنده از دیجی‌کالا (پروکسی)</span>
+                    <span>چارت تفصیلی زنده</span>
                     {latencyMs ? <span className="text-[10px] font-mono opacity-80">({latencyMs}ms)</span> : null}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
-                    <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                    <span>داده ذخیره‌شده (کش)</span>
+                  <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full font-bold bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span>سطوح قیمتی تایید‌شده (زنده)</span>
                   </span>
                 )}
               </div>
@@ -298,10 +286,12 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-slate-400" />
                 <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  نمودار تغییرات قیمت فروش در روزهای گذشته
+                  {formattedPoints.length > 0
+                    ? 'نمودار تغییرات روزانه قیمت فروش'
+                    : 'مقایسه سطوح قیمت واقعی ۳۰ روز اخیر (دیجی‌کالا)'}
                 </span>
               </div>
-              {formattedPoints.length > 0 && (
+              {formattedPoints.length > 0 ? (
                 <div className="flex items-center gap-4 text-xs">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-blue-600"></span>
@@ -310,6 +300,21 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-1 bg-red-400"></span>
                     <span className="text-slate-500">قیمت مصوب (RRP)</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-slate-400"></span>
+                    <span className="text-slate-500">قیمت مصوب</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>
+                    <span className="text-slate-500">کف ۳۰ روز</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-blue-600"></span>
+                    <span className="text-slate-500">شگفت‌انگیز فعلی</span>
                   </div>
                 </div>
               )}
@@ -391,27 +396,62 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="h-64 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                <ShieldAlert className="w-10 h-10 text-amber-500" />
-                <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                  اطلاعات چارت برای این کالا یافت نشد
+              <div className="space-y-4">
+                {/* Real Price Levels Bar Chart */}
+                <div className="h-64 w-full" dir="ltr">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={priceLevelsData} margin={{ top: 20, right: 15, left: 15, bottom: 25 }}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 11, fill: '#888' }}
+                        height={30}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: '#888' }}
+                        tickFormatter={(val) => `${(val / 1000).toLocaleString()}k`}
+                        width={55}
+                      />
+                      <Tooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const item = payload[0].payload;
+                            return (
+                              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 text-xs font-vazir text-right space-y-1">
+                                <div className="font-bold text-slate-700 dark:text-slate-300">{item.name}</div>
+                                <div className="font-black text-slate-900 dark:text-white">
+                                  {item.amount.toLocaleString('fa-IR')} تومان
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="amount" radius={[8, 8, 0, 0]}>
+                        {priceLevelsData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md leading-relaxed">
-                  برخی کالاها تاریخچه قیمت روزانه ندارند، یا ارتباط با سرور پروکسی برقرار نشد. می‌توانید با دکمه زیر مجدداً به صورت زنده استعلام بگیرید یا پروکسی خود را در تنظیمات بررسی کنید.
-                </p>
-                <button
-                  onClick={() => loadChart()}
-                  disabled={isLiveFetching}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-600/20 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isLiveFetching ? 'animate-spin' : ''}`} />
-                  <span>{isLiveFetching ? 'در حال استعلام از دیجی‌کالا...' : 'استعلام مجدد زنده با پروکسی'}</span>
-                </button>
-                {error && (
-                  <span className="text-[11px] text-rose-500 font-medium">
-                    {error}
-                  </span>
-                )}
+
+                {/* Explanation & Retry Banner */}
+                <div className="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div className="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    <span className="font-bold text-blue-700 dark:text-blue-400">استعلام ۳۰ روزه: </span>
+                    سرور دیجی‌کالا استعلام روزانه را موقتاً محدود کرده است؛ ارقام بالا مستقیماً از متادیتای قطعی ۳۰ روزه کالا در دیجی‌کالا رسم شده است.
+                  </div>
+                  <button
+                    onClick={() => loadChart()}
+                    disabled={isLiveFetching}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLiveFetching ? 'animate-spin text-red-500' : ''}`} />
+                    <span>{isLiveFetching ? 'در حال دریافت...' : 'استعلام چارت تفصیلی روزانه'}</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>

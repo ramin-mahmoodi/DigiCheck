@@ -124,20 +124,27 @@ export async function fetchOffersData(): Promise<OffersDataResponse> {
   return await fetchLiveOffers();
 }
 
+// In-memory cache to avoid rate-limiting on repetitive clicks
+const chartMemoryCache = new Map<number, ProductChartData>();
+
 /**
  * Directly calls Digikala price-chart API through candidate proxies.
- * Resilient multi-proxy strategy matching chandchandi.
+ * Caches successful responses in memory to prevent rate-limiting.
  */
 export async function fetchLiveProductChartDirect(
   productId: number,
   proxyUrl?: string
 ): Promise<ProductChartData> {
+  if (chartMemoryCache.has(productId)) {
+    return chartMemoryCache.get(productId)!;
+  }
+
   const targetUrl = `https://api.digikala.com/v1/product/${productId}/price-chart/`;
   const activeProxy = proxyUrl !== undefined ? proxyUrl.trim() : getStoredProxyUrl().trim();
   const fetchUrl = buildProxyUrl(targetUrl, activeProxy);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 2500);
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
 
   try {
     const res = await fetch(fetchUrl, {
@@ -180,7 +187,7 @@ export async function fetchLiveProductChartDirect(
 
     const analysis = analyzeDiscountClient(sellingPrice, rrpPrice, discountPercent, history);
 
-    return {
+    const result: ProductChartData = {
       product_id: productId,
       title: `کالای کد ${productId}`,
       selling_price: sellingPrice,
@@ -189,6 +196,8 @@ export async function fetchLiveProductChartDirect(
       history,
       is_live: true,
     };
+    chartMemoryCache.set(productId, result);
+    return result;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -331,18 +340,27 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
   const activeProxy = proxyUrl !== undefined ? proxyUrl : getStoredProxyUrl();
   const landingUrl = buildProxyUrl('https://api.digikala.com/v1/incredible-offers/', activeProxy);
 
-  // Fetch landing page and multiple pages of all incredible offers in parallel
-  const fetchJson = async (target: string) => {
-    const u = buildProxyUrl(target, activeProxy);
-    const r = await fetch(u, { headers: { 'Accept': 'application/json' } });
-    if (!r.ok) throw new Error(`خطا در اتصال به دیجی‌کالا (${r.status})`);
-    return await r.json();
+  // Fetch landing page and multiple pages of all incredible offers with auto-retry
+  const fetchJsonWithRetry = async (target: string, retries = 2) => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const u = buildProxyUrl(target, activeProxy);
+        const r = await fetch(u, { headers: { 'Accept': 'application/json' } });
+        if (!r.ok) throw new Error(`خطا (${r.status})`);
+        const j = await r.json();
+        if (j && j.data) return j;
+      } catch (e) {
+        if (attempt === retries) return null;
+      }
+      await new Promise((res) => setTimeout(res, 200 * (attempt + 1)));
+    }
+    return null;
   };
 
   // 1. Fetch landing page + page 1
   const [landingJson, p1Json] = await Promise.all([
-    fetchJson('https://api.digikala.com/v1/incredible-offers/'),
-    fetchJson('https://api.digikala.com/v1/incredible-offers/products/?page=1').catch(() => null),
+    fetchJsonWithRetry('https://api.digikala.com/v1/incredible-offers/'),
+    fetchJsonWithRetry('https://api.digikala.com/v1/incredible-offers/products/?page=1'),
   ]);
 
   const totalPages = p1Json?.data?.pager?.total_pages || 39;
@@ -351,14 +369,14 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
     pageNumbers.push(i);
   }
 
-  // 2. Fetch all remaining catalog pages in batches of 8 to ensure 100% of 769 products are fetched without socket drops
+  // 2. Fetch all remaining catalog pages in batches of 8 with retry
   const pageResults = [p1Json];
   const chunkSize = 8;
   for (let i = 0; i < pageNumbers.length; i += chunkSize) {
     const chunk = pageNumbers.slice(i, i + chunkSize);
     const chunkResults = await Promise.all(
       chunk.map((p) =>
-        fetchJson(`https://api.digikala.com/v1/incredible-offers/products/?page=${p}`).catch(() => null)
+        fetchJsonWithRetry(`https://api.digikala.com/v1/incredible-offers/products/?page=${p}`)
       )
     );
     pageResults.push(...chunkResults);
@@ -377,7 +395,14 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
 
   const offerCategories: Record<string, any> = {};
   const seenProductIds = new Set<number>();
-  const stats = {
+  const stats: Record<string, number> = {
+    REAL_GREAT: 0,
+    REAL_MODERATE: 0,
+    FAKE_INFLATED: 0,
+    FAKE_UNCHANGED: 0,
+    FAKE_MORE_EXPENSIVE: 0,
+    NEUTRAL: 0,
+    UNKNOWN: 0,
     real_deals_count: 0,
     fake_deals_count: 0,
     neutral_deals_count: 0,
@@ -410,15 +435,19 @@ export async function fetchLiveOffers(proxyUrl?: string): Promise<OffersDataResp
         if (item.discount_percent > stats.max_discount) {
           stats.max_discount = item.discount_percent;
         }
-        if (item.analysis?.verdict === 'REAL_GREAT') {
-          stats.real_deals_count++;
-          stats.great_deals_count++;
-        } else if (item.analysis?.verdict === 'REAL_MODERATE') {
-          stats.real_deals_count++;
-        } else if (item.analysis?.verdict === 'FAKE_UNCHANGED' || item.analysis?.verdict === 'FAKE_INFLATED') {
-          stats.fake_deals_count++;
-        } else {
-          stats.neutral_deals_count++;
+        if (item.analysis?.verdict) {
+          const v = item.analysis.verdict;
+          stats[v] = (stats[v] || 0) + 1;
+          if (v === 'REAL_GREAT') {
+            stats.real_deals_count++;
+            stats.great_deals_count++;
+          } else if (v === 'REAL_MODERATE') {
+            stats.real_deals_count++;
+          } else if (v === 'FAKE_UNCHANGED' || v === 'FAKE_INFLATED' || v === 'FAKE_MORE_EXPENSIVE') {
+            stats.fake_deals_count++;
+          } else {
+            stats.neutral_deals_count++;
+          }
         }
       }
       return item;

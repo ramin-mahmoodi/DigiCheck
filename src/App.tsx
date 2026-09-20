@@ -139,6 +139,26 @@ export const App: React.FC = () => {
     return counts;
   }, [currentProducts]);
 
+  // Compute accurate real-time stats for the top stat cards
+  const currentStats = useMemo(() => {
+    const s: Record<string, number> = {
+      REAL_GREAT: 0,
+      REAL_MODERATE: 0,
+      FAKE_INFLATED: 0,
+      FAKE_UNCHANGED: 0,
+      FAKE_MORE_EXPENSIVE: 0,
+      NEUTRAL: 0,
+    };
+    if (!currentProducts || currentProducts.length === 0) return s;
+    for (const p of currentProducts) {
+      const v = p.analysis?.verdict;
+      if (v && s[v] !== undefined) {
+        s[v]++;
+      }
+    }
+    return s;
+  }, [currentProducts]);
+
   // Filter and sort products of the active category
   const filteredProducts = useMemo(() => {
     if (!currentProducts || currentProducts.length === 0) {
@@ -277,8 +297,8 @@ export const App: React.FC = () => {
           <>
             {/* High-level Stats Cards */}
             <StatsBar
-              stats={data.stats}
-              totalProducts={data.total_products}
+              stats={currentStats}
+              totalProducts={currentProducts.length}
               activeFilter={verdictFilter}
               onSelectFilter={(filter) => setVerdictFilter(filter)}
             />
