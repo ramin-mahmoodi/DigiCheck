@@ -123,14 +123,12 @@ export const PriceChartModal: React.FC<PriceChartModalProps> = ({ product, onClo
   const min30dToman = analysis?.min_30d ? Math.round(analysis.min_30d / 10) : null;
   const avg30dToman = analysis?.avg_30d ? Math.round(analysis.avg_30d / 10) : null;
 
-  const priceLevelsData = React.useMemo(() => {
-    const min30 = min30dToman || currentSellingToman;
-    return [
-      { name: 'قیمت پایه (مصوب)', amount: currentRrpToman, color: '#94a3b8' },
-      { name: 'کف ۳۰ روز اخیر', amount: min30, color: '#10b981' },
-      { name: 'شگفت‌انگیز امروز', amount: currentSellingToman, color: '#2563eb' },
-    ];
-  }, [currentRrpToman, min30dToman, currentSellingToman]);
+  const min30Val = min30dToman || currentSellingToman;
+  const priceLevelsData = [
+    { name: 'قیمت پایه (مصوب)', amount: currentRrpToman, color: '#94a3b8' },
+    { name: 'کف ۳۰ روز اخیر', amount: min30Val, color: '#10b981' },
+    { name: 'شگفت‌انگیز امروز', amount: currentSellingToman, color: '#2563eb' },
+  ];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
