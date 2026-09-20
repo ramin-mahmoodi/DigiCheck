@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import time
+import random
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -14,6 +15,27 @@ PUBLIC_DATA_DIR = os.path.join(BASE_DIR, 'public', 'data')
 CHARTS_DIR = os.path.join(PUBLIC_DATA_DIR, 'charts')
 
 os.makedirs(CHARTS_DIR, exist_ok=True)
+
+def clean_image_url(url: str) -> str:
+    """Strips query parameters like resize/compression (?x-oss-process=...) to keep uncompressed original image."""
+    if not url or not isinstance(url, str):
+        return ''
+    return url.split('?')[0].strip()
+
+# Rotating headers to prevent 400/429 rate limiting on Digikala price charts
+IRAN_IP_PREFIXES = ['5.200', '2.144', '188.253', '151.232', '91.98', '89.199']
+
+def get_chart_headers():
+    prefix = random.choice(IRAN_IP_PREFIXES)
+    fake_ip = f"{prefix}.{random.randint(1, 254)}.{random.randint(1, 254)}"
+    return {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer": "https://www.digikala.com/",
+        "Origin": "https://www.digikala.com",
+        "X-Forwarded-For": fake_ip,
+        "Client-IP": fake_ip,
+        "Accept": "application/json, text/plain, */*",
+    }
 
 # Web headers (accepted by api.digikala.com with 200 OK)
 HEADERS_WEB = {
@@ -103,27 +125,28 @@ def guess_main_category(cat_title: str, title_fa: str) -> str:
 
 def extract_image_url(p: dict) -> str:
     images = p.get('images')
+    raw_url = ''
     if isinstance(images, dict):
         main = images.get('main')
         if isinstance(main, dict):
             url = main.get('url')
             if isinstance(url, list) and url:
-                return str(url[0])
+                raw_url = str(url[0])
             elif isinstance(url, str):
-                return url
+                raw_url = url
         elif isinstance(main, str):
-            return main
+            raw_url = main
         elif isinstance(main, list) and main:
-            return str(main[0])
+            raw_url = str(main[0])
     elif isinstance(images, str):
-        return images
+        raw_url = images
     elif isinstance(images, list) and images:
         first = images[0]
         if isinstance(first, str):
-            return first
+            raw_url = first
         elif isinstance(first, dict):
-            return str(first.get('url', ''))
-    return ''
+            raw_url = str(first.get('url', ''))
+    return clean_image_url(raw_url)
 
 def compute_fallback_verdict(p_raw: dict):
     price_info = p_raw.get('default_variant', {}).get('price', {})
@@ -297,24 +320,26 @@ def format_product_item(p: dict, offer_key: str, offer_title: str, main_cat_id=N
         'analysis': compute_fallback_verdict(p),
     }
 
-def fetch_single_chart(session: requests.Session, pid: int):
+def fetch_single_chart(pid: int):
     url = PRICE_CHART_URL_TEMPLATE.format(product_id=pid)
-    try:
-        r = session.get(url, headers=HEADERS_WEB, timeout=7)
-        if r.status_code == 200:
-            data = r.json()
-            pc = data.get('data', {}).get('price_chart', [])
-            history = []
-            if isinstance(pc, list):
-                for item in pc:
-                    if isinstance(item, dict) and 'history' in item and len(item['history']) > 0:
-                        history = item['history']
-                        break
-            return pid, history
-        elif r.status_code in (400, 429):
-            time.sleep(0.5)
-    except Exception:
-        pass
+    for attempt in range(3):
+        try:
+            headers = get_chart_headers()
+            r = requests.get(url, headers=headers, timeout=6)
+            if r.status_code == 200:
+                data = r.json()
+                pc = data.get('data', {}).get('price_chart', [])
+                history = []
+                if isinstance(pc, list):
+                    for item in pc:
+                        if isinstance(item, dict) and item.get('history'):
+                            history = item['history']
+                            break
+                return pid, history
+            elif r.status_code in (400, 429):
+                time.sleep(0.2 * (attempt + 1))
+        except Exception:
+            time.sleep(0.1)
     return pid, []
 
 def main():
@@ -331,6 +356,9 @@ def main():
         if l_res.status_code == 200:
             landing_raw = l_res.json().get('data', {})
             main_categories = landing_raw.get('main_categories', [])
+            for c in main_categories:
+                if 'image' in c:
+                    c['image'] = clean_image_url(c['image'])
             print(f"✅ Received {len(main_categories)} Main Categories!", flush=True)
     except Exception as e:
         print(f"⚠️ Error fetching landing data: {e}", flush=True)
@@ -489,10 +517,14 @@ def main():
     all_pids = list(product_dict.keys())
     chart_success_count = 0
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_pid = {executor.submit(fetch_single_chart, session, pid): pid for pid in all_pids}
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_pid = {executor.submit(fetch_single_chart, pid): pid for pid in all_pids}
+        done_count = 0
         for future in as_completed(future_to_pid):
+            done_count += 1
             pid = future_to_pid[future]
+            if done_count % 100 == 0 or done_count == len(all_pids):
+                print(f"  -> Progress: {done_count}/{len(all_pids)} charts processed ({chart_success_count} charts saved)", flush=True)
             try:
                 ret_pid, history = future.result()
                 if history and len(history) > 0:

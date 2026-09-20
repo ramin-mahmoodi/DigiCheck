@@ -77,7 +77,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onOpenChart }
       <div className="relative aspect-square w-full bg-white p-4 flex items-center justify-center border-b border-slate-100 dark:border-slate-800/60">
         {product.image ? (
           <img
-            src={product.image}
+            src={product.image.split('?')[0]}
             alt={product.title_fa}
             className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
             loading="lazy"

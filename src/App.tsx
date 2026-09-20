@@ -245,8 +245,6 @@ export const App: React.FC = () => {
         onToggleDarkMode={() => setDarkMode(!darkMode)}
         onOpenManualChecker={() => setIsManualCheckerOpen(true)}
         lastUpdatedFa={data?.last_updated_fa || ''}
-        onRefresh={handleRefresh}
-        isRefreshing={isRefreshing}
       />
 
       {/* Main Container */}

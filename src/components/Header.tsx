@@ -1,13 +1,11 @@
 import React from 'react';
-import { Sun, Moon, Search, Sparkles, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Sun, Moon, Search, Sparkles, ShieldCheck } from 'lucide-react';
 
 interface HeaderProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
   onOpenManualChecker: () => void;
   lastUpdatedFa: string;
-  onRefresh: () => void;
-  isRefreshing: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -15,8 +13,6 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleDarkMode,
   onOpenManualChecker,
   lastUpdatedFa,
-  onRefresh,
-  isRefreshing,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors shadow-sm">
@@ -57,16 +53,6 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Search className="w-4 h-4" />
               <span className="hidden xs:inline">استعلام کالا با لینک</span>
-            </button>
-
-            {/* Refresh Button */}
-            <button
-              onClick={onRefresh}
-              disabled={isRefreshing}
-              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
-              title="به‌روزرسانی داده‌ها"
-            >
-              <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin text-red-500' : ''}`} />
             </button>
 
             {/* Dark Mode Toggle */}
